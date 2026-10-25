@@ -7,9 +7,10 @@ find_package(OpenSSL REQUIRED Crypto)
 find_package(SQLite3)
 
 add_executable(cli main.cpp
-        PasswordStore.cpp
-        PasswordStore.h)
+        hashing.cpp
+        hashing.h)
 target_link_libraries(cli PRIVATE OpenSSL::Crypto)
+target_compile_definitions(cli PRIVATE OPENSSL_NO_DEPRECATED)
 target_link_libraries(cli PRIVATE SQLite3::SQLite3)
 
 add_executable(example exampl.cpp)
