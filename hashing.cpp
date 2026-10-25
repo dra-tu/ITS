@@ -46,7 +46,7 @@ namespace hashing {
     gen_salt(const std::span<uint8_t, SALT_SIZE> &out_salt) {
         int res = RAND_bytes(out_salt.data(), hashing::SALT_SIZE);
         if (res != 1) std::cerr << ERR_get_error() << std::endl;
-        return res == 1 ? true : false;
+        return res == 1;
     }
 
     bool
