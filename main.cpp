@@ -7,34 +7,19 @@
 
 #include <sqlite3.h>
 
-// evp stuff for hash
-#include <openssl/evp.h>
-
-// specific hash functino
-#include <openssl/sha.h>
-#include <openssl/rand.h>
-#include <openssl/err.h>
-
 #include "hashing.h"
-
-/* hash sha256 example (duck.ai)
- * unsigned char hash[SHA256_DIGEST_LENGTH];
- * SHA256(reinterpret_cast<unsigned char*>(const_cast<char*>(str)),
- *        std::strlen(str),
- *        hash);
- **/
 
 #define SQL_LOGIN_T "login"
 
 class Login {
 public:
-    char email[hashing::EMAIL_SIZE];
+    char    email[hashing::EMAIL_SIZE];
     uint8_t salt[hashing::SALT_SIZE];
     uint8_t sha512_NoSalt[hashing::SHA512_SIZE];
     uint8_t sha512_Salt[hashing::SHA512_SIZE];
     uint8_t argon2id[hashing::ARGON2ID_SIZE];
 
-    void prity_print(std::ostream& os) {
+    void pretty_print(std::ostream& os) {
         os << email << " {\n";
         os << std::hex << std::uppercase << std::setfill('0');
         os << "\tsalt:        [";
@@ -53,18 +38,15 @@ public:
         os << std::dec << "}" << std::endl;
     }
 
-    void create(const char *email, std::string_view &passwd) {
-        // this->email = email;
+    void
+    create(const char *email, const std::string_view &passwd) {
         strncpy(this->email, email, hashing::EMAIL_SIZE);
 
         std::span sha512(sha512_NoSalt);
         hashing::sha512(passwd, sha512);
 
-        if (1 != RAND_bytes(salt, hashing::SALT_SIZE)) {
-            std::cerr << ERR_get_error() << std::endl;
-            return;
-        }
         const std::span salt_span(salt);
+        if (!hashing::gen_salt(salt_span)) return;
 
         std::span sha512_salt(sha512_Salt);
         hashing::sha512(passwd, salt_span, sha512_salt);
@@ -73,12 +55,14 @@ public:
         hashing::argon2id(passwd, salt_span, argon2id_span);
     }
 
-    void load(sqlite3 *db, const char *email) {
-        static std::string_view sql_query = "SELECT * FROM " SQL_LOGIN_T " WHERE email = :EMAIL";
+    void
+    load(sqlite3 *db, const char *email) {
+        static std::string_view sql_query =
+            "SELECT * FROM " SQL_LOGIN_T " WHERE email = :EMAIL";
 
         sqlite3_stmt *stmt = nullptr;
         int res = sqlite3_prepare_v2(db, sql_query.data(), sql_query.size(),
-                           &stmt, nullptr);
+            &stmt, nullptr);
         if (res) {
             std::cout << sqlite3_errmsg(db) << "\n";
             return;
@@ -118,7 +102,8 @@ public:
         sqlite3_finalize(stmt);
     }
 
-    void save(sqlite3 *db) {
+    void
+    save(sqlite3 *db) {
         static std::string_view sql_create =
             "INSERT INTO " SQL_LOGIN_T " "
             "VALUES (:EMAIL, :SALT, :SHA512_SALT, :SHA512_NO_SALT, :ARGON2ID)";
@@ -132,18 +117,15 @@ public:
         }
 
         int email_idx  = sqlite3_bind_parameter_index(stmt, ":EMAIL");
-        sqlite3_bind_text(stmt, email_idx, email, -1, SQLITE_STATIC);
-
         int sha512_idx = sqlite3_bind_parameter_index(stmt, ":SHA512_NO_SALT");
-        sqlite3_bind_text(stmt, sha512_idx, (const char*) sha512_NoSalt, hashing::SHA512_SIZE, SQLITE_STATIC);
-
         int salt_idx = sqlite3_bind_parameter_index(stmt, ":SALT");
-        sqlite3_bind_text(stmt, salt_idx, (const char*) salt, hashing::SALT_SIZE, SQLITE_STATIC);
-
         int sha512_salt_idx = sqlite3_bind_parameter_index(stmt, ":SHA512_SALT");
-        sqlite3_bind_text(stmt, sha512_salt_idx , (const char*) sha512_Salt, hashing::SHA512_SIZE, SQLITE_STATIC);
-
         int argon2id_idx = sqlite3_bind_parameter_index(stmt, ":ARGON2ID");
+
+        sqlite3_bind_text(stmt, email_idx, email, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, sha512_idx, (const char*) sha512_NoSalt, hashing::SHA512_SIZE, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, salt_idx, (const char*) salt, hashing::SALT_SIZE, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, sha512_salt_idx , (const char*) sha512_Salt, hashing::SHA512_SIZE, SQLITE_STATIC);
         sqlite3_bind_text(stmt, argon2id_idx , (const char*) argon2id, hashing::ARGON2ID_SIZE, SQLITE_STATIC);
 
         res = sqlite3_step(stmt);
@@ -162,7 +144,8 @@ namespace db {
             "sha512 BLOB(64)"
         ");";
 
-    static sqlite3 *f(const char *filename) {
+    static sqlite3*
+    f(const char *filename) {
         sqlite3 *db = nullptr;
 
         if (SQLITE_OK != sqlite3_open(filename, &db)) {
@@ -175,39 +158,46 @@ namespace db {
     }
 }
 
-int get(std::span<char*> args) {
-    if (args.size() != 1) {
-        std::cerr << "[ERROR] new args wrong" << std::endl;
+int
+main_get(int argc, char *argv[]) {
+    if (argc != 2) {
+        std::cerr << "[ERROR] get args wrong" << std::endl;
         return 1;
     }
 
     sqlite3 *db = db::f(db::FILE_LOGIN);
     Login login{};
-    login.load(db, args[0]);
+    login.load(db, argv[1]);
     sqlite3_close(db);
 
-    login.prity_print(std::cout);
+    login.pretty_print(std::cout);
 
     return 0;
 }
 
-int login_new(std::span<char*> args) {
-    if (args.size() != 2) {
+int
+main_login(int argc, char *argv[]) {
+    return 0;
+}
+
+int
+main_new(int argc, char *argv[]) {
+    if (argc != 3) {
         std::cerr << "[ERROR] new args wrong" << std::endl;
         return 1;
     }
 
     sqlite3 *db = db::f(db::FILE_LOGIN);
     Login login{};
-    std::string_view passwd = std::string_view{args[1]};
-    login.create(args[0], passwd);
+    std::string_view passwd = std::string_view{argv[2]};
+    login.create(argv[1], passwd);
     login.save(db);
     sqlite3_close(db);
 
     return 0;
 }
 
-typedef int (*main_func)(std::span<char*>);
+typedef int (*main_func)(int argc, char *argv[]);
 typedef struct {
     const char *cmd;
     const char *desc;
@@ -215,51 +205,39 @@ typedef struct {
 } cmd;
 
 constexpr std::array commands = std::to_array<const cmd>({
-    {"get", "display salt and the hashes", get},
-    {"new", "create new user", login_new},
+    {"new", "create new user", main_new},
+    {"login", "check if user+password is in the DB", main_login},
+    {"get", "display salt and the hashes of a user", main_get},
 });
 
-void usage() {
-    std::cout << "USAGE: cli <cmd> <cmd args>\n<cmd>:\n";
-    for (const cmd command : commands)
-        std::cout << "\t" << command.cmd << " - " << command.desc << "\n";
+void
+usage() {
+    std::cout << "USAGE: cli [OPTIONS] COMMAND\n\nCommands:\n";
+    for (const cmd command : commands) {
+        std::print(std::cout, "  {:<8} {}\n", command.cmd, command.desc);
+    }
 }
 
 
-int main(int argc, char *argv[]) {
-
-    // char *pw = "awdawd";
-    // size_t pw_len = strlen(pw);
-    // unsigned char hash[EVP_MAX_MD_SIZE] = {0};
-
-    // SHA512((unsigned char*) pw, pw_len, hash);
-
-    // std::printf("%p : ", hash);
-    // for (size_t i = 0; i < EVP_MAX_MD_SIZE; ++i) std::printf("%02X", hash[i]);
-    // std::printf("\n");
-    // std::cout << pw << std::endl;
-
-    // return 0;
-
-    if (argc <= 1) {
-        usage();
-        return 1;
-    }
+int
+main(int argc, char *argv[]) {
+    if (argc <= 1) { usage(); return 1; }
 
     const char *user_cmd = argv[1];
     main_func func = nullptr;
 
-    for (const cmd command : commands) {
+    for (const cmd &command : commands) {
         if (0 == strcmp(user_cmd, command.cmd)) {
             func = command.func;
             break;
         }
     }
 
-    if (!func) {
-        usage();
-        return 1;
-    }
+    if (!func) { usage(); return 1; }
 
-    return func(std::span(argv + 2, argc - 2));
+    argv[1] = argv[0];
+    argv = &argv[1];
+    argc--;
+
+    return func(argc, argv);
 }
