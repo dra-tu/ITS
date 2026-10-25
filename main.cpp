@@ -17,8 +17,9 @@ main_get(int argc, char *argv[]) {
     }
 
     db::DB db;
-    db.connect();
     db::Login login{};
+
+    db.connect();
     db.load_login(argv[1], login);
     db.disconnect();
 
@@ -29,7 +30,27 @@ main_get(int argc, char *argv[]) {
 
 static int
 main_login(int argc, char *argv[]) {
-    (void) argc; (void) argv;
+    if (argc != 3) {
+        std::cerr << "[ERROR] login args wrong" << std::endl;
+        return 1;
+    }
+
+    db::DB db{};
+    db::Login login_from_db{};
+    db::Login login_from_user{};
+
+    db.connect();
+    db.load_login(argv[1], login_from_db);
+    db.disconnect();
+
+    login_from_user.create(argv[1], argv[2], login_from_db.salt);
+
+    if (login_from_db != login_from_user) {
+        std::println(std::cout, "Wrong password and or email");
+        return 1;
+    }
+
+    std::println(std::cout, "Welcome back {:} !!!", login_from_db.email);
     return 0;
 }
 

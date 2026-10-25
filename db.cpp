@@ -8,6 +8,37 @@
 #include <sqlite3.h>
 
 namespace db {
+
+    bool
+    Login::operator==(const Login &other) const {
+        if (0 != memcmp(email,         other.email,         hashing::EMAIL_SIZE)) return false;
+        if (0 != memcmp(salt,          other.salt,          hashing::SALT_SIZE)) return false;
+        if (0 != memcmp(sha512_NoSalt, other.sha512_NoSalt, hashing::SHA512_SIZE)) return false;
+        if (0 != memcmp(sha512_Salt,   other.sha512_Salt,   hashing::SHA512_SIZE)) return false;
+        if (0 != memcmp(argon2id,      other.argon2id,      hashing::ARGON2ID_SIZE)) return false;
+
+        return true;
+    }
+
+    bool
+    Login::create(const std::string_view &usr_email,
+           const std::string_view &passwd,
+           const std::span<uint8_t, hashing::SALT_SIZE> &usr_salt) {
+        usr_email.copy(email, hashing::EMAIL_SIZE);
+        memcpy(salt, usr_salt.data(), hashing::SALT_SIZE);
+
+        std::span sha512(sha512_NoSalt);
+        const std::span salt_span(salt);
+        std::span sha512_salt_span(sha512_Salt);
+        std::span argon2id_span(argon2id);
+
+        if (!hashing::sha512(passwd, sha512)) return false;
+        if (!hashing::sha512(passwd, salt_span, sha512_salt_span)) return false;
+        if (!hashing::argon2id(passwd, salt_span, argon2id_span)) return false;
+
+        return true;
+    }
+
     bool
     Login::create(const std::string_view &email,
                   const std::string_view &passwd)
