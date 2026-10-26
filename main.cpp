@@ -50,7 +50,7 @@ main_login(int argc, char *argv[]) {
         return 1;
     }
 
-    std::println(std::cout, "Welcome back {:} !!!", login_from_db.email);
+    std::cout << "Welcome back " << login_from_db.email << " !!!";
     return 0;
 }
 
@@ -72,6 +72,20 @@ main_new(int argc, char *argv[]) {
     return 0;
 }
 
+static int
+main_gen(int argc, char *argv[]) {
+    (void) argc; (void) argv;
+    std::println(std::cout, "[ERROR] NOT IMPLEMENTED");
+    return 0;
+}
+
+static int
+main_attack(int argc, char *argv[]) {
+    (void) argc; (void) argv;
+    std::println(std::cout, "[ERROR] NOT IMPLEMENTED");
+    return 0;
+}
+
 typedef int (*main_func)(int argc, char *argv[]);
 typedef struct {
     const char *cmd;
@@ -80,16 +94,18 @@ typedef struct {
 } cmd;
 
 constexpr std::array commands = std::to_array<const cmd>({
-    {"new", "create new user", main_new},
-    {"login", "check if user+password is in the DB", main_login},
-    {"get", "display salt and the hashes of a user", main_get},
+    {"new",    "create new user",                                               main_new},
+    {"login",  "check if user+password is in the DB",                           main_login},
+    {"get",    "display salt and the hashes of a user",                         main_get},
+    {"gen",    "[TODO] generate a Rainbow table to be used for the attack cmd", main_gen},
+    {"attack", "[TODO] benchmark offline attacks",                              main_attack},
 });
 
 static void
 usage() {
     std::cout << "USAGE: cli [OPTIONS] COMMAND\n\nCommands:\n";
     for (const cmd command : commands) {
-        std::print(std::cout, "  {:<8} {}\n", command.cmd, command.desc);
+        std::printf("  %-8s %s\n", command.cmd, command.desc);
     }
 }
 
