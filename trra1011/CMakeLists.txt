@@ -1,3 +1,5 @@
+cmake_minimum_required(VERSION 4.3)
+project(ITS)
 find_package(OpenSSL REQUIRED Crypto)
 find_package(SQLite3)
 
@@ -10,3 +12,7 @@ target_compile_options(cli PRIVATE -Wall -Wextra -Wconversion -Wsign-conversion 
 target_compile_definitions(cli PRIVATE OPENSSL_NO_DEPRECATED)
 target_link_libraries(cli PRIVATE OpenSSL::Crypto)
 target_link_libraries(cli PRIVATE SQLite3::SQLite3)
+
+set(CMAKE_CXX_STANDARD 23)
+
+add_subdirectory(trra1011)
