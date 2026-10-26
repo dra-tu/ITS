@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 4.3)
-project(ITS)
 find_package(OpenSSL REQUIRED Crypto)
 find_package(SQLite3)
 
