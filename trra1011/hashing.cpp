@@ -59,8 +59,7 @@ namespace hashing {
 
     bool
     sha512(const std::string_view &text,
-           std::span<uint8_t,
-           SHA512_SIZE> &out_hash
+           std::span<uint8_t, SHA512_SIZE> &out_hash
     ) {
         return hash(text, nullptr, out_hash, EVP_sha512());
     }
