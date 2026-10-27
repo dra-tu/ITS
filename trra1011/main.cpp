@@ -120,8 +120,131 @@ main_gen(int argc, char *argv[]) {
 
 static int
 main_attack(int argc, char *argv[]) {
-    (void) argc; (void) argv;
-    std::println(std::cout, "[ERROR] NOT IMPLEMENTED");
+    std::cout << "[WARNING] this function is not good" << std::endl;
+    if (argc != 3) {
+        std::cout << "USAGE: <attack DB> <rt DB>" << std::endl;
+        return 1;
+    }
+
+    const char* db_attack_path = argv[1];
+    const char* db_reinbow_path = argv[2];
+    std::array<rainbow_entery, 500> rt{};
+
+    const char *sql_sha512      = "SELECT email, sha512_NoSalt FROM login";
+    const char *sql_sha512_salt = "SELECT email, salt, sha512_salt FROM login";
+    const char *sql_argon2id    = "SELECT email, salt, argon2id FROM login";
+
+    const char *sql_rt = "SELECT passwd, sha512 FROM rainbow LIMIT 500";
+
+    sqlite3 *db_attack = nullptr;
+    if (sqlite3_open(db_attack_path, &db_attack) != SQLITE_OK) {
+        std::cout << "[ERROR][SQLITE3] " << sqlite3_errmsg(db_attack) << std::endl;
+        sqlite3_close(db_attack);
+        return false;
+    }
+
+    sqlite3 *db_reinbow = nullptr;
+    if (sqlite3_open(db_reinbow_path , &db_reinbow) != SQLITE_OK) {
+        std::cout << "[ERROR][SQLITE3] " << sqlite3_errmsg(db_reinbow) << std::endl;
+        sqlite3_close(db_reinbow);
+        return false;
+    }
+
+    // load reinbow(tr) into memory
+    size_t i = 0;
+    sqlite3_stmt *stmt = nullptr;
+    int res = sqlite3_prepare_v2(db_reinbow, sql_rt, -1, &stmt, nullptr);
+    if (res) { std::cout  << sqlite3_errmsg(db_reinbow) << "\n"; return false; }
+    while ((res = sqlite3_step(stmt)) == SQLITE_ROW) {
+        const void *db_pw     = sqlite3_column_blob(stmt, 0);
+        const void *db_sha512 = sqlite3_column_blob(stmt, 1);
+        memcpy(rt[i].passwd, db_pw,     (size_t) sqlite3_column_bytes(stmt, 0));
+        memcpy(rt[i].sha512, db_sha512, (size_t) sqlite3_column_bytes(stmt, 1));
+        ++i;
+    }
+    size_t rt_size = i;
+    if (res != SQLITE_DONE) std::cerr << sqlite3_errmsg(db_reinbow) << "\n";
+    sqlite3_finalize(stmt);
+
+    // crack sha512
+    std::cout << "== sha512 ==" << std::endl;
+    stmt = nullptr;
+    res = sqlite3_prepare_v2(db_attack, sql_sha512, -1, &stmt, nullptr);
+    if (res) { std::cout << sqlite3_errmsg(db_attack) << "\n"; return false; }
+    while ((res = sqlite3_step(stmt)) == SQLITE_ROW) {
+        char    *db_email = (char*) sqlite3_column_blob(stmt, 0);
+        uint8_t *db_hash  = (uint8_t*) sqlite3_column_blob(stmt, 1);
+
+        for (size_t j = 0; j < rt_size; ++j) {
+            const rainbow_entery &entery = rt[j];
+            if (memcmp(entery.sha512, db_hash, (size_t)sqlite3_column_bytes(stmt, 1)) == 0) {
+                std::cout << db_email << " --- " << entery.passwd << "\n";
+                break;
+            }
+        }
+    }
+    if (res != SQLITE_DONE) std::cerr << sqlite3_errmsg(db_attack) << "\n";
+    sqlite3_finalize(stmt);
+
+    // crack sha512 -- salt
+    std::cout << "== sha512 SALT ==" << std::endl;
+    stmt = nullptr;
+    res = sqlite3_prepare_v2(db_attack, sql_sha512_salt, -1, &stmt, nullptr);
+    if (res) { std::cout << sqlite3_errmsg(db_attack) << "\n"; return false; }
+    while ((res = sqlite3_step(stmt)) == SQLITE_ROW) {
+        char    *db_email = (char*) sqlite3_column_blob(stmt, 0);
+        uint8_t *db_salt  = (uint8_t*) sqlite3_column_blob(stmt, 1);
+        uint8_t *db_hash  = (uint8_t*) sqlite3_column_blob(stmt, 2);
+
+        for (size_t j = 0; j < rt_size; ++j) {
+            const rainbow_entery &entery = rt[j];
+            uint8_t cal_hash[hashing::SHA512_SIZE];
+
+            std::span hash_span(cal_hash);
+            std::span salt_span(db_salt, hashing::SALT_SIZE);
+            std::string_view pw_span(entery.passwd);
+            hashing::sha512(pw_span, salt_span, hash_span);
+
+            if (memcmp(cal_hash, db_hash, (size_t)sqlite3_column_bytes(stmt, 2)) == 0) {
+                std::cout << db_email << " --- " << entery.passwd << "\n";
+                break;
+            }
+        }
+    }
+    if (res != SQLITE_DONE) std::cerr << sqlite3_errmsg(db_attack) << "\n";
+    sqlite3_finalize(stmt);
+
+    // crack sha512 -- argon2id
+    std::cout << "== argon2id ==" << std::endl;
+    stmt = nullptr;
+    res = sqlite3_prepare_v2(db_attack, sql_argon2id, -1, &stmt, nullptr);
+    if (res) { std::cout << sqlite3_errmsg(db_attack) << "\n"; return false; }
+    while ((res = sqlite3_step(stmt)) == SQLITE_ROW) {
+        char    *db_email = (char*) sqlite3_column_blob(stmt, 0);
+        uint8_t *db_salt  = (uint8_t*) sqlite3_column_blob(stmt, 1);
+        uint8_t *db_hash  = (uint8_t*) sqlite3_column_blob(stmt, 2);
+
+        for (size_t j = 0; j < rt_size; ++j) {
+            const rainbow_entery &entery = rt[j];
+            uint8_t cal_hash[hashing::ARGON2ID_SIZE];
+
+            std::span hash_span(cal_hash);
+            std::span<uint8_t, hashing::SALT_SIZE> salt_span(db_salt, hashing::SALT_SIZE);
+            std::string_view pw_span(entery.passwd);
+            hashing::argon2id(pw_span, salt_span, hash_span);
+
+            if (memcmp(cal_hash, db_hash, (size_t)sqlite3_column_bytes(stmt, 2)) == 0) {
+                std::cout << db_email << " --- " << entery.passwd << "\n";
+                break;
+            }
+        }
+    }
+    if (res != SQLITE_DONE) std::cerr << sqlite3_errmsg(db_attack) << "\n";
+    sqlite3_finalize(stmt);
+
+    sqlite3_close(db_attack);
+    sqlite3_close(db_reinbow);
+
     return 0;
 }
 
