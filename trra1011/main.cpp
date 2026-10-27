@@ -3,9 +3,11 @@
 #include <array>
 
 #include <print>
+#include <sqlite3.h>
 
 #include "hashing.h"
 #include "db.h"
+#include "rainbow.h"
 
 #define SQL_LOGIN_T "login"
 
@@ -74,8 +76,45 @@ main_new(int argc, char *argv[]) {
 
 static int
 main_gen(int argc, char *argv[]) {
-    (void) argc; (void) argv;
-    std::println(std::cout, "[ERROR] NOT IMPLEMENTED");
+    if (argc != 2) {
+        std::cout << "USAGE: <rt DB>" << std::endl;
+        return 1;
+    }
+
+    const char *sql_in = "INSERT INTO rainbow VALUES (:PW, :HASH)";
+    const char* db_reinbow_path = argv[1];
+
+    sqlite3 *db_reinbow = nullptr;
+    if (sqlite3_open(db_reinbow_path , &db_reinbow) != SQLITE_OK) {
+        std::cout << "[ERROR][SQLITE3] " << sqlite3_errmsg(db_reinbow) << std::endl;
+        sqlite3_close(db_reinbow);
+        return false;
+    }
+
+    sqlite3_stmt *stmt = nullptr;
+    int res = sqlite3_prepare_v2(db_reinbow, sql_in, -1, &stmt, nullptr);
+    if (res) { std::cout << sqlite3_errmsg(db_reinbow) << "\n"; return false; }
+
+    for (size_t i = 0; i < rainbow_table_len; ++i) {
+        char pw[hashing::MAX_PASSWD_SIZE] = {0};
+        uint8_t sha512[hashing::SHA512_SIZE] = {0};
+        strncpy(pw, rainbow_table[i].passwd, hashing::MAX_PASSWD_SIZE);
+
+        std::span hash_span(sha512);
+        std::string_view pw_span(pw);
+        hashing::sha512(pw_span, hash_span);
+
+        int pw_idx   = sqlite3_bind_parameter_index(stmt, ":PW");
+        int hash_idx = sqlite3_bind_parameter_index(stmt, ":HASH");
+        sqlite3_bind_text(stmt, pw_idx, pw, -1, SQLITE_STATIC);
+        sqlite3_bind_blob(stmt, hash_idx, sha512, hashing::SHA512_SIZE, SQLITE_STATIC);
+
+        if (sqlite3_step(stmt) != SQLITE_DONE) {
+            std::cerr << "[ERROR] line[" << i << "] " << sqlite3_errmsg(db_reinbow) << std::endl;
+        }
+        sqlite3_reset(stmt);
+    }
+
     return 0;
 }
 

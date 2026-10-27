@@ -5,7 +5,8 @@ add_executable(cli main.cpp
         hashing.cpp
         hashing.h
         db.cpp
-        db.h)
+        db.h
+        rainbow.h)
 target_compile_options(cli PRIVATE -Wall -Wextra -Wconversion -Wsign-conversion -pedantic-errors)
 target_compile_definitions(cli PRIVATE OPENSSL_NO_DEPRECATED)
 target_link_libraries(cli PRIVATE OpenSSL::Crypto)
