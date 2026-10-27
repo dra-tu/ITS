@@ -1,72 +1,30 @@
 #pragma once
-#include <cstdint>
 
 #include "hashing.h"
 
-// 1 Gib kann ungefähr 3M einträge halten
-// it is smaller now so space for MORE!!!!!!
-// 2^(30)÷336 ~= 3.195.660
-typedef struct {
-    char passwd[hashing::MAX_PASSWD_SIZE];
-    uint8_t sha512[hashing::SHA512_SIZE];
-} rainbow_entery;
+namespace rainbow {
+	// reverence:
+	// https://github.com/danielmiessler/SecLists/blob/master/Passwords/Common-Credentials/10k-most-common.txt
+	// https://github.com/danielmiessler/SecLists/blob/master/Passwords/Common-Credentials/Language-Specific/German_Pwdb_common-password-list-top-150.txt
+	// https://github.com/danielmiessler/SecLists/blob/master/Passwords/Common-Credentials/top-20-common-SSH-passwords.txt
+	constexpr std::array passwd{
+		"login",    "passwort",   "123",      "123456",        "123456789", "password",   "1234567",  "345678",    "1234",      "qwerty",
+		"12345",    "dragon",     "pussy",    "baseball",      "football",  "letmein",    "monkey",   "696969",    "abc123",    "mustang",
+		"shadow",   "master",     "jennifer", "111111",        "2000",      "jordan",     "superman", "harley",    "1234567",   "fuckme",
+		"fuckyou",  "trustno1",   "ranger",   "buster",        "thomas",    "tigger",     "robert",   "soccer",    "fuck",      "batman",
+		"killer",   "hockey",     "george",   "charlie",       "andrew",    "michelle",   "love",     "sunshine",  "jessica",   "asshole",
+		"michael",  "hunter",     "test",     "pass",          "6969",      "schalke",    "michael",  "starwars",  "computer",  "werder",
+		"abc123",   "wasser",     "andreas",  "florian",       "internet",  "michelle",   "sommer",   "berlin",    "000000",    "asdfgh",
+		"sandra",   "pokemon",    "marcel",   "Passwort",      "thomas",    "hamburg",    "dragon",   "christian", "bayern",    "geheim",
+		"handball", "dortmund",   "666666",   "ichliebedich",  "sebastian", "patrick",    "tobias",   "nicole",    "martin",    "bushido",
+		"sascha",   "stefan",     "asdasd",   "fabian",        "dominik",   "1q2w3e4r5t", "jasmin",   "justin",    "logitech",  "eminem",
+		"benjamin", "maximilian", "sabrina",  "yxcvbnm",       "samsung",   "SKIFFY",     "1234qwer", "markus",    "schule",    "hallo1",
+		"pascal",   "merlin",     "nadine",   "1234567891",    "1qay2wsx",  "snoopy",     "moritz",   "medion",    "lollol",    "playboy",
+		"123qwe",   "vanessa",    "mercedes", "matrix",        "philipp",   "oliver",     "wertz123", "sunshine",  "hurensohn", "Hallo123",
+		"borussia", "passwort1",  "admin",    "administrator", "marketing", "root",       "toor",     "raspberry", "Passw@rd",  "administrator",
+	};
 
-constexpr rainbow_entery rainbow_table[] = {
-    {.passwd = "login", .sha512 = {0}},
-    {.passwd = "passwort", .sha512 = {0}},
-    {.passwd = "123", .sha512 = {0}},
-    {.passwd = "123456", .sha512 = {0}},
-    {.passwd = "123456789", .sha512 = {0}},
-    {.passwd = "password", .sha512={0}},
-    {.passwd = "123456", .sha512={0}},
-    {.passwd = "12345678", .sha512={0}},
-    {.passwd = "1234", .sha512={0}},
-    {.passwd = "qwerty", .sha512={0}},
-    {.passwd = "12345", .sha512={0}},
-    {.passwd = "dragon", .sha512={0}},
-    {.passwd = "pussy", .sha512={0}},
-    {.passwd = "baseball", .sha512={0}},
-    {.passwd = "football", .sha512={0}},
-    {.passwd = "letmein", .sha512={0}},
-    {.passwd = "monkey", .sha512={0}},
-    {.passwd = "696969", .sha512={0}},
-    {.passwd = "abc123", .sha512={0}},
-    {.passwd = "mustang", .sha512={0}},
-    {.passwd = "michael", .sha512={0}},
-    {.passwd = "shadow", .sha512={0}},
-    {.passwd = "master", .sha512={0}},
-    {.passwd = "jennifer", .sha512={0}},
-    {.passwd = "111111", .sha512={0}},
-    {.passwd = "2000", .sha512={0}},
-    {.passwd = "jordan", .sha512={0}},
-    {.passwd = "superman", .sha512={0}},
-    {.passwd = "harley", .sha512={0}},
-    {.passwd = "1234567", .sha512={0}},
-    {.passwd = "fuckme", .sha512={0}},
-    {.passwd = "hunter", .sha512={0}},
-    {.passwd = "fuckyou", .sha512={0}},
-    {.passwd = "trustno1", .sha512={0}},
-    {.passwd = "ranger", .sha512={0}},
-    {.passwd = "buster", .sha512={0}},
-    {.passwd = "thomas", .sha512={0}},
-    {.passwd = "tigger", .sha512={0}},
-    {.passwd = "robert", .sha512={0}},
-    {.passwd = "soccer", .sha512={0}},
-    {.passwd = "fuck", .sha512={0}},
-    {.passwd = "batman", .sha512={0}},
-    {.passwd = "test", .sha512={0}},
-    {.passwd = "pass", .sha512={0}},
-    {.passwd = "killer", .sha512={0}},
-    {.passwd = "hockey", .sha512={0}},
-    {.passwd = "george", .sha512={0}},
-    {.passwd = "charlie", .sha512={0}},
-    {.passwd = "andrew", .sha512={0}},
-    {.passwd = "michelle", .sha512={0}},
-    {.passwd = "love", .sha512={0}},
-    {.passwd = "sunshine", .sha512={0}},
-    {.passwd = "jessica", .sha512={0}},
-    {.passwd = "asshole", .sha512={0}},
-    {.passwd = "6969", .sha512={0}},
-};
+	extern std::array<std::array<uint8_t, hashing::SHA512_SIZE>, passwd.size()> sha512;
 
-constexpr size_t rainbow_table_len = std::size(rainbow_table);
+	void fill_sha512();
+}
