@@ -131,12 +131,12 @@ namespace db {
         return true;
     }
 
-    static bool
-    copy_column_value(sqlite3_stmt *stmt, const int iCol, void *dest, const int expected_size) {
-        const void *db_val = sqlite3_column_blob(stmt, iCol);
-        const int db_val_size = sqlite3_column_bytes(stmt, iCol);
-        if (db_val_size != expected_size) return false;
-        memcpy(dest, db_val, (size_t)expected_size);
+    bool
+    DB::copy_column_value(sqlite3_stmt *stmt, const int iCol, std::span<uint8_t> dest) {
+        const void *db_val    = sqlite3_column_blob(stmt,  iCol);
+        const size_t db_val_size = (size_t)sqlite3_column_bytes(stmt, iCol);
+        if (db_val_size != dest.size()) return false;
+        memcpy(dest.data(), db_val, dest.size());
         return true;
     }
 
@@ -153,8 +153,7 @@ namespace db {
         user_email.copy(out_login.email, hashing::EMAIL_SIZE);
 
         sqlite3_stmt *stmt = nullptr;
-        int res = sqlite3_prepare_v2(db, sql_query.data(), (int) sql_query.size(),
-            &stmt, nullptr);
+        int res = sqlite3_prepare_v2(db, sql_query.data(), (int) sql_query.size(), &stmt, nullptr);
         if (res) {
             std::cout << sqlite3_errmsg(db) << "\n";
             return false;
@@ -163,14 +162,16 @@ namespace db {
         const int email_idx  = sqlite3_bind_parameter_index(stmt, ":EMAIL");
         sqlite3_bind_text(stmt, email_idx, out_login.email, -1, SQLITE_STATIC);
 
+        bool found_one = false;
         while ((res = sqlite3_step(stmt)) == SQLITE_ROW) {
-            copy_column_value(stmt, 0, out_login.salt,          hashing::SALT_SIZE);
-            copy_column_value(stmt, 1, out_login.sha512_Salt,   hashing::SHA512_SIZE);
-            copy_column_value(stmt, 2, out_login.sha512_NoSalt, hashing::SHA512_SIZE);
-            copy_column_value(stmt, 3, out_login.argon2id,      hashing::ARGON2ID_SIZE);
+            found_one = true;
+            copy_column_value(stmt, 0, out_login.salt);
+            copy_column_value(stmt, 1, out_login.sha512_Salt);
+            copy_column_value(stmt, 2, out_login.sha512_NoSalt);
+            copy_column_value(stmt, 3, out_login.argon2id);
         }
         if (res != SQLITE_DONE) std::cerr << sqlite3_errmsg(db) << "\n";
         sqlite3_finalize(stmt);
-        return true;
+        return found_one;
     }
 }

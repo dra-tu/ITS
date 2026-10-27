@@ -18,10 +18,9 @@ namespace hashing {
 
     static bool
     hash(const std::string_view &text,
-         const std::span<uint8_t> *salt,
+         const std::span<uint8_t, SALT_SIZE> *salt,
          std::span<uint8_t, SHA512_SIZE> &out_hash,
-         const EVP_MD *hash_func
-    ) {
+         const EVP_MD *hash_func) {
         EVP_MD_CTX *ctx = EVP_MD_CTX_new();
         if (!ctx) {
             std::cerr << "[ERROR] " << ERR_get_error();
@@ -43,24 +42,22 @@ namespace hashing {
     }
 
     bool
-    gen_salt(const std::span<uint8_t, SALT_SIZE> &out_salt) {
+    gen_salt(const std::span<uint8_t, SALT_SIZE> out_salt) {
         int res = RAND_bytes(out_salt.data(), hashing::SALT_SIZE);
         if (res != 1) std::cerr << ERR_get_error() << std::endl;
         return res == 1;
     }
 
     bool
-    sha512(const std::string_view &text,
-           const std::span<uint8_t> &salt,
-           std::span<uint8_t, SHA512_SIZE> &out_hash
-    ) {
+    sha512(const std::string_view text,
+           std::span<uint8_t, SALT_SIZE> salt,
+           std::span<uint8_t, SHA512_SIZE> out_hash) {
         return hash(text, &salt, out_hash, EVP_sha512());
     }
 
     bool
-    sha512(const std::string_view &text,
-           std::span<uint8_t, SHA512_SIZE> &out_hash
-    ) {
+    sha512(const std::string_view text,
+           std::span<uint8_t, SHA512_SIZE> out_hash) {
         return hash(text, nullptr, out_hash, EVP_sha512());
     }
 
@@ -82,10 +79,9 @@ namespace hashing {
      * @param out_hash
      */
     bool
-    argon2id(const std::string_view &text,
-             const std::span<uint8_t, SALT_SIZE> &salt,
-             std::span<uint8_t, ARGON2ID_SIZE> &out_hash
-    ) {
+    argon2id(const std::string_view text,
+             const std::span<uint8_t, SALT_SIZE> salt,
+             std::span<uint8_t, ARGON2ID_SIZE> out_hash) {
         int retval = false;
 
         EVP_KDF *kdf = nullptr;

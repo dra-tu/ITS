@@ -1,5 +1,7 @@
 #pragma once
 
+#include <sqlite3.h>
+
 #include "hashing.h"
 
 namespace db {
@@ -36,6 +38,9 @@ namespace db {
 
         bool connect(const std::string_view &filename = DEFAULT_DB_FILE);
         void disconnect();
+
+        static bool
+        copy_column_value(sqlite3_stmt *stmt, int iCol, std::span<uint8_t> dest);
 
         bool save_login(const Login &login) const;
         bool load_login(const std::string_view &user_email, Login &out_login) const;

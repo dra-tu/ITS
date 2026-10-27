@@ -15,20 +15,20 @@ namespace hashing {
     static constexpr size_t MAX_PASSWD_SIZE = 256;
 
     bool
-    gen_salt(const std::span<uint8_t, SALT_SIZE> &out_salt);
+    gen_salt(std::span<uint8_t, SALT_SIZE> out_salt);
 
     bool
-    sha512(const std::string_view &text,
-           const std::span<uint8_t> &salt,
-           std::span<uint8_t, SHA512_SIZE> &out_hash);
+    sha512(std::string_view text,
+           std::span<uint8_t, SALT_SIZE> salt,
+           std::span<uint8_t, SHA512_SIZE> out_hash);
 
     bool
-    sha512(const std::string_view &text,
-           std::span<uint8_t, SHA512_SIZE> &out_hash);
+    sha512(std::string_view text,
+           std::span<uint8_t, SHA512_SIZE> out_hash);
 
     bool
-    argon2id(const std::string_view &text,
-             const std::span<uint8_t, SALT_SIZE> &salt,
-             std::span<uint8_t, ARGON2ID_SIZE> &out_hash);
+    argon2id(std::string_view text,
+             std::span<uint8_t, SALT_SIZE> salt,
+             std::span<uint8_t, ARGON2ID_SIZE> out_hash);
 
 }
