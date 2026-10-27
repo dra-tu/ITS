@@ -40,17 +40,17 @@ namespace db {
     }
 
     bool
-    Login::create(const std::string_view &email,
+    Login::create(const std::string_view &usr_email,
                   const std::string_view &passwd)
     {
-        email.copy(this->email, hashing::EMAIL_SIZE);
+        usr_email.copy(this->email, hashing::EMAIL_SIZE);
 
-        std::span sha512(sha512_NoSalt);
+        std::span sha512_span(sha512_NoSalt);
         const std::span salt_span(salt);
         std::span sha512_salt_span(sha512_Salt);
         std::span argon2id_span(argon2id);
 
-        if (!hashing::sha512(passwd, sha512)) return false;
+        if (!hashing::sha512(passwd, sha512_span)) return false;
         if (!hashing::gen_salt(salt_span)) return false;
         if (!hashing::sha512(passwd, salt_span, sha512_salt_span)) return false;
         if (!hashing::argon2id(passwd, salt_span, argon2id_span)) return false;

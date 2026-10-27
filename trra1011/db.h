@@ -23,7 +23,7 @@ namespace db {
                const std::span<uint8_t, hashing::SALT_SIZE> &usr_salt);
 
         bool
-        create(const std::string_view &email,
+        create(const std::string_view &usr_email,
                const std::string_view &passwd);
 
         void
