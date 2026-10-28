@@ -62,6 +62,7 @@ namespace hashing {
     }
 
     /**
+    https://www.rfc-editor.org/info/rfc9106/
     * 1.   If a uniformly safe option that is not tailored to your
         application or hardware is acceptable, select Argon2id with t=1
         iteration, p=4 lanes, m=2^(21) (2 GiB of RAM), 128-bit salt, and
