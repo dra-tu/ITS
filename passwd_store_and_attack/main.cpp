@@ -10,7 +10,7 @@
 #include "rainbow.h"
 
 #include <chrono>
-using CLOCK = std::chrono::steady_clock;
+using Clock = std::chrono::steady_clock;
 
 #define SQL_LOGIN_T "login"
 
@@ -45,8 +45,16 @@ main_get(int argc, char *argv[]) {
 
 static int
 main_login(int argc, char *argv[]) {
-    if (argc != 3) {
+    if (argc != 4) {
         std::cerr << "[ERROR] login args wrong" << std::endl;
+        return 1;
+    }
+
+    // Ranim TOTP prüfung
+    std::string totp = argv[3];
+
+    if (/* totp false */) {
+        std::cout << "Wrong totp\n";
         return 1;
     }
 
@@ -64,7 +72,7 @@ main_login(int argc, char *argv[]) {
         std::cout << "Welcome back " << login_from_db.email << " !!!";
         return 0;
     } else {
-        std::println(std::cout, "Wrong password and or email");
+        std::cout << "Wrong password and or email";
         return 1;
     }
 }
@@ -126,7 +134,7 @@ attack(const std::string& tag,
     size_t found   = 0;
     size_t total   = 0;
     size_t skipped = 0;
-    const CLOCK::time_point time_start = CLOCK::now();
+    const Clock::time_point time_start = Clock::now();
     while ((res = sqlite3_step(stmt)) == SQLITE_ROW) {
         if (sqlite3_column_count(stmt) != (check_salt ? 3 : 2)) {
             std::cerr << "[WARNING] unexpected column count" << std::endl;
@@ -146,13 +154,13 @@ attack(const std::string& tag,
             continue;
         }
 
-        const CLOCK::time_point time_start_pw = CLOCK::now();
+        const Clock::time_point time_start_pw = Clock::now();
         for (size_t i = 0; i < rainbow::passwd.size(); ++i) {
             const std::string_view passwd = rainbow::passwd[i];
             hash_func(i, passwd, salt, hash_buf);
 
             if (memcmp(hash_buf.data(), hash.data(), hash_buf.size()) == 0) {
-                const CLOCK::time_point time_end_pw = CLOCK::now();
+                const Clock::time_point time_end_pw = Clock::now();
                 long diff_µs  = std::chrono::duration_cast<std::chrono::microseconds>(time_end_pw - time_start_pw).count();
                 double diff_s = (double)diff_µs / 1000000.0;
 
@@ -165,7 +173,7 @@ attack(const std::string& tag,
     if (res != SQLITE_DONE) {
         std::cerr << "[ERROR] fror sqlite3 " << sqlite3_errmsg(db) << std::endl;
     }
-    const CLOCK::time_point time_end = CLOCK::now();
+    const Clock::time_point time_end = Clock::now();
     sqlite3_finalize(stmt);
 
     long diff_µs  = std::chrono::duration_cast<std::chrono::microseconds>(time_end - time_start).count();
@@ -233,6 +241,115 @@ main_attack(int argc, char *argv[]) {
     return 0;
 }
 
+struct RecoveryRequest {
+    std::string token;
+    Clock::time_point createdAt;
+    bool used = false;
+};
+
+// Erstellt einen Token mit 32 hexadezimalen Zeichen.
+// arc4random_uniform verwendet den Zufallszahlengenerator des Betriebssystems.
+std::string createToken() {
+    const char chars[] = "0123456789abcdef";
+    std::string token;
+
+    for (int i = 0; i < 32; ++i) {
+        token += chars[arc4random_uniform(16)];
+    }
+
+    return token;
+}
+
+int main_email(int argc, char *argv[]) {
+    const std::string username = "Ranim";
+    const std::string email = "ranim.test@example.com";
+    bool secondFactorEnabled = true;
+
+    RecoveryRequest request;
+
+    std::cout << "=== E-Mail-Kontowiederherstellung: Demo ===\n";
+    std::cout << "Testkonto: " << username << "\n";
+    std::cout << "1) Normaler Login (Status anzeigen)\n";
+    std::cout << "2) Verlust des zweiten Faktors simulieren\n";
+    std::cout << "Auswahl: ";
+
+    std::string choice;
+    std::getline(std::cin, choice);
+
+    if (choice != "2") {
+        std::cout << "Zweiter Faktor ist: "
+                  << (secondFactorEnabled ? "AKTIV" : "INAKTIV")
+                  << "\n";
+        std::cout << "Zum Login werden Passwort und TOTP benoetigt.\n";
+        return 0;
+    }
+
+    std::cout << "\nDer Benutzer meldet den Verlust des zweiten Faktors.\n";
+    std::cout << "Wiederherstellungs-E-Mail: " << email << "\n";
+
+    request.token = createToken();
+    request.createdAt = Clock::now();
+
+    const std::string recoveryLink =
+        "https://example.invalid/recover?token=" + request.token;
+
+    std::cout << "\n[SIMULIERTE E-MAIL]\n";
+    std::cout << "Betreff: Kontowiederherstellung\n";
+    std::cout << "Test-Link (1 Minute gueltig):\n";
+    std::cout << recoveryLink << "\n";
+
+    // Erste Eingabe: Token pruefen
+    std::string submittedToken;
+
+    while (true) {
+        std::cout << "\nToken eingeben: ";
+        std::getline(std::cin, submittedToken);
+
+        if (request.used) {
+            std::cout << "FEHLER: Dieser Link wurde bereits verwendet.\n";
+            continue;
+        }
+
+        if (Clock::now() - request.createdAt >
+            std::chrono::minutes(1)) {
+            std::cout << "FEHLER: Der Wiederherstellungs-Link ist abgelaufen.\n";
+            return 0;
+        }
+
+        if (submittedToken != request.token) {
+            std::cout << "FEHLER: Ungueltiger Wiederherstellungs-Link.\n";
+            continue;
+        }
+
+        // Token wird nach erfolgreicher Pruefung verbraucht.
+        request.used = true;
+        std::cout << "\nE-Mail-Link bestaetigt.\n";
+        break;
+    }
+
+    std::cout << "\n[UNSICHERE DEMO-VARIANTE]\n";
+    std::cout << "Das System setzt die Zwei-Faktor-Anforderung zurueck,\n";
+    std::cout << "obwohl kein TOTP-Code vorgelegt wurde.\n";
+
+    secondFactorEnabled = false;
+
+    std::cout << "Wiederherstellung abgeschlossen. TOTP ist nun: "
+              << (secondFactorEnabled ? "AKTIV" : "INAKTIV") << "\n";
+
+    // Zweite Eingabe: Demonstriert, dass derselbe Token verbraucht ist.
+    std::cout << "\nTest: Verwende denselben Token erneut.\n";
+    std::cout << "Token erneut eingeben: ";
+    std::getline(std::cin, submittedToken);
+
+    if (request.used) {
+        std::cout << "FEHLER: Dieser Link wurde bereits verwendet.\n";
+    }
+
+    std::cout << "\nHinweis: Keine echte E-Mail, keine produktive Anwendung.\n";
+
+    return 0;
+}
+
 typedef int (*main_func)(int argc, char *argv[]);
 typedef struct {
     const char *cmd;
@@ -241,10 +358,11 @@ typedef struct {
 } cmd;
 
 constexpr std::array commands = std::to_array<const cmd>({
-    {"new",    "create new user",                                               main_new},
-    {"login",  "check if user+password is in the DB",                           main_login},
-    {"get",    "display salt and the hashes of a user",                         main_get},
-    {"attack", "[TODO] benchmark offline attacks",                              main_attack},
+    {"new",    "create new user",                      main_new},
+    {"login",  "check if user+password is in the DB",  main_login},
+    {"get",    "display salt and the hashes of a user",main_get},
+    {"attack", "benchmark offline attacks",          main_attack},
+    {"r",     "email",   main_email},
 });
 
 static void
