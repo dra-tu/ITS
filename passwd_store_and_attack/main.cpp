@@ -10,6 +10,13 @@
 #include "rainbow.h"
 
 #include <chrono>
+// BEGINN TOTP-ERGAENZUNG
+#include <string>
+#include <ctime>
+#include <cstdlib>
+#include <oath.h>
+// ENDE TOTP-ERGAENZUNG
+
 using Clock = std::chrono::steady_clock;
 
 #define SQL_LOGIN_T "login"
@@ -42,7 +49,71 @@ main_get(int argc, char *argv[]) {
 
     return 0;
 }
+// BEGINN TOTP-ERGAENZUNG
+static bool pruefeTotp(const std::string& code) {
+    // Festes Test-Secret fuer den Prototyp.
+    // Keine Speicherung in der Datenbank.
+    const std::string secretBase32 =
+        "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
 
+    // Nur genau sechs Ziffern zulassen.
+    if (code.length() != 6 ||
+        code.find_first_not_of("0123456789") != std::string::npos) {
+        std::cout << "TOTP-Code muss aus genau sechs Ziffern bestehen.\n";
+        return false;
+        }
+
+    if (oath_init() != OATH_OK) {
+        std::cout << "TOTP-Bibliothek konnte nicht gestartet werden.\n";
+        return false;
+    }
+
+    // Base32-Darstellung in die Schluesselbytes umwandeln.
+    char* secret = nullptr;
+    std::size_t secretLaenge = 0;
+
+    int status = oath_base32_decode(
+        secretBase32.c_str(),
+        secretBase32.size(),
+        &secret,
+        &secretLaenge
+    );
+
+    if (status != OATH_OK) {
+        std::cout << "TOTP-Secret konnte nicht decodiert werden.\n";
+        oath_done();
+        return false;
+    }
+
+    const std::time_t jetzt = std::time(nullptr);
+
+    if (jetzt == static_cast<std::time_t>(-1)) {
+        std::cout << "Systemzeit konnte nicht gelesen werden.\n";
+        std::free(secret);
+        oath_done();
+        return false;
+    }
+
+    std::cout
+        << "TOTP: 6 Ziffern, feste Zeitabschnitte von 30 Sekunden.\n"
+        << "Nur der Code des aktuellen Zeitabschnitts wird akzeptiert.\n";
+
+    int ergebnis = oath_totp_validate(
+        secret,
+        secretLaenge,
+        jetzt,
+        30,              // Zeitabschnitt: 30 Sekunden
+        0,               // Startzeitpunkt: Unix-Epochenbeginn
+        0,               // Keine benachbarten Zeitabschnitte pruefen
+        code.c_str()
+    );
+
+    std::free(secret);
+    oath_done();
+
+    return ergebnis >= 0;
+}
+// ENDE TOTP-ERGAENZUNG
 static int
 main_login(int argc, char *argv[]) {
     if (argc != 4) {
@@ -53,7 +124,7 @@ main_login(int argc, char *argv[]) {
     // Ranim TOTP prüfung
     std::string totp = argv[3];
 
-    if (/* totp false */) {
+    if (!pruefeTotp(totp)) {  // TOTP-Pruefung eingefuegt
         std::cout << "Wrong totp\n";
         return 1;
     }
