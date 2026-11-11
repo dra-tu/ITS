@@ -25,5 +25,5 @@
 
 - add totp field
   - ??? how to save totp code
-- add \[DB::update_login(Login&)\] function
+  - ~~add \[DB::update_login(Login&)\] function~~
 - things for recovery
