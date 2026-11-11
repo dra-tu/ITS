@@ -160,7 +160,15 @@ main_new(int argc, char *argv[]) {
 
     db.connect();
     login.create(argv[1], argv[2]);
+
+    /// ==================================================
+    /// use ONLY one off the next two lines !!!!!!!!!!!
+
     db.save_login(login);
+    // db.update_login(login);
+
+    /// ==================================================
+
     db.disconnect();
 
     return 0;

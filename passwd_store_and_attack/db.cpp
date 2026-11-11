@@ -82,7 +82,7 @@ namespace db {
     DB::connect(const std::string_view &filename) {
         sqlite3 *db = nullptr;
         if (sqlite3_open(filename.data(), &db) != SQLITE_OK) {
-            std::cout << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;
+            std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;
             sqlite3_close(db);
             return false;
         }
@@ -97,6 +97,49 @@ namespace db {
     }
 
     bool
+    DB::copy_column_value(sqlite3_stmt *stmt, const int iCol, std::span<uint8_t> dest) {
+        const void *db_val    = sqlite3_column_blob(stmt,  iCol);
+        const size_t db_val_size = (size_t)sqlite3_column_bytes(stmt, iCol);
+        if (db_val_size != dest.size()) return false;
+        memcpy(dest.data(), db_val, dest.size());
+        return true;
+    }
+
+    bool
+    DB::update_login(const Login &login) const {
+        const std::string sql_update =
+            "UPDATE login"
+            " SET salt = :SALT, sha512_salt = :SHA512_SALT, sha512_NoSalt = :SHA512_NO_SALT , argon2id = :ARGON2ID"
+            " WHERE email = :EMAIL";
+
+        if (!connection) return false;
+        sqlite3 *db = (sqlite3*) connection;
+
+        sqlite3_stmt *stmt = nullptr;
+        int res = sqlite3_prepare_v2(db, sql_update.data(), (int) sql_update.size(), &stmt, nullptr);
+        if (res) {
+            std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;
+            return false;
+        }
+
+        const int email_idx       = sqlite3_bind_parameter_index(stmt, ":EMAIL");
+        const int sha512_idx      = sqlite3_bind_parameter_index(stmt, ":SHA512_NO_SALT");
+        const int salt_idx        = sqlite3_bind_parameter_index(stmt, ":SALT");
+        const int sha512_salt_idx = sqlite3_bind_parameter_index(stmt, ":SHA512_SALT");
+        const int argon2id_idx    = sqlite3_bind_parameter_index(stmt, ":ARGON2ID");
+        sqlite3_bind_text(stmt, email_idx,       login.email,                       -1,                     SQLITE_STATIC);
+        sqlite3_bind_text(stmt, sha512_idx,      (const char*) login.sha512_NoSalt, hashing::SHA512_SIZE,   SQLITE_STATIC);
+        sqlite3_bind_text(stmt, salt_idx,        (const char*) login.salt,          hashing::SALT_SIZE,     SQLITE_STATIC);
+        sqlite3_bind_text(stmt, sha512_salt_idx, (const char*) login.sha512_Salt,   hashing::SHA512_SIZE,   SQLITE_STATIC);
+        sqlite3_bind_text(stmt, argon2id_idx,    (const char*) login.argon2id,      hashing::ARGON2ID_SIZE, SQLITE_STATIC);
+
+        if (sqlite3_step(stmt) != SQLITE_DONE) std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;;
+        sqlite3_finalize(stmt);
+
+        return true;
+    }
+
+    bool
     DB::save_login(const Login &login) const {
         static std::string_view sql_create =
             "INSERT INTO login (email, salt, sha512_salt, sha512_NoSalt, argon2id)"
@@ -106,10 +149,9 @@ namespace db {
         sqlite3 *db = (sqlite3*) connection;
 
         sqlite3_stmt *stmt = nullptr;
-        int res = sqlite3_prepare_v2(db, sql_create.data(), (int) sql_create.size(),
-                           &stmt, nullptr);
+        int res = sqlite3_prepare_v2(db, sql_create.data(), (int) sql_create.size(), &stmt, nullptr);
         if (res) {
-            std::cout << sqlite3_errmsg(db) << "\n";
+            std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;
             return false;
         }
 
@@ -125,18 +167,9 @@ namespace db {
         sqlite3_bind_text(stmt, sha512_salt_idx, (const char*) login.sha512_Salt,   hashing::SHA512_SIZE,   SQLITE_STATIC);
         sqlite3_bind_text(stmt, argon2id_idx,    (const char*) login.argon2id,      hashing::ARGON2ID_SIZE, SQLITE_STATIC);
 
-        if (sqlite3_step(stmt) != SQLITE_DONE) std::cerr << sqlite3_errmsg(db) << "\n";
+        if (sqlite3_step(stmt) != SQLITE_DONE) std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;;
         sqlite3_finalize(stmt);
 
-        return true;
-    }
-
-    bool
-    DB::copy_column_value(sqlite3_stmt *stmt, const int iCol, std::span<uint8_t> dest) {
-        const void *db_val    = sqlite3_column_blob(stmt,  iCol);
-        const size_t db_val_size = (size_t)sqlite3_column_bytes(stmt, iCol);
-        if (db_val_size != dest.size()) return false;
-        memcpy(dest.data(), db_val, dest.size());
         return true;
     }
 
@@ -155,7 +188,7 @@ namespace db {
         sqlite3_stmt *stmt = nullptr;
         int res = sqlite3_prepare_v2(db, sql_query.data(), (int) sql_query.size(), &stmt, nullptr);
         if (res) {
-            std::cout << sqlite3_errmsg(db) << "\n";
+            std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;
             return false;
         }
 
@@ -170,7 +203,7 @@ namespace db {
             copy_column_value(stmt, 2, out_login.sha512_NoSalt);
             copy_column_value(stmt, 3, out_login.argon2id);
         }
-        if (res != SQLITE_DONE) std::cerr << sqlite3_errmsg(db) << "\n";
+        if (res != SQLITE_DONE) std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;;
         sqlite3_finalize(stmt);
         return found_one;
     }

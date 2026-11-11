@@ -42,6 +42,7 @@ namespace db {
         static bool
         copy_column_value(sqlite3_stmt *stmt, int iCol, std::span<uint8_t> dest);
 
+        bool update_login(const Login &login) const;
         bool save_login(const Login &login) const;
         bool load_login(const std::string_view &user_email, Login &out_login) const;
     };
