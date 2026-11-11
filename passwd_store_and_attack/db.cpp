@@ -4,6 +4,10 @@
 #include <iomanip>
 #include <iostream>
 #include <cstring>
+#include <chrono>
+using Clock = std::chrono::steady_clock;
+
+#include "rainbow.h"
 
 #include <sqlite3.h>
 
@@ -77,11 +81,10 @@ namespace db {
         os << std::dec << "}" << std::endl;
     }
 
-
     bool
     DB::connect(const std::string_view &filename) {
         sqlite3 *db = nullptr;
-        if (sqlite3_open(filename.data(), &db) != SQLITE_OK) {
+        if (sqlite3_open_v2(filename.data(), &db, SQLITE_OPEN_READWRITE, nullptr) != SQLITE_OK) {
             std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;
             sqlite3_close(db);
             return false;
@@ -206,5 +209,146 @@ namespace db {
         if (res != SQLITE_DONE) std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;;
         sqlite3_finalize(stmt);
         return found_one;
+    }
+
+    static bool
+    check_row(std::string_view email, std::span<uint8_t> hash, size_t hash_expected_size,
+              std::span<uint8_t> salt = std::span<uint8_t>{},
+              bool check_salt = false) {
+        if (!email.data() || !hash.data() || (check_salt && !salt.data())) {
+            std::cerr << "[WARNING] salt or sha512_Salt or email field is missing" << std::endl;
+            return false;
+        }
+        if (email.size() >= hashing::EMAIL_SIZE) {
+            std::cerr << "[WARNING] email: " << email << " is to long" << std::endl;
+            return false;
+        }
+        if (hash.size() != hash_expected_size) {
+            std::cerr << "[WARNING] hash for " << email << " has wrong size" << std::endl;
+            return false;
+        }
+        if (check_salt && (salt.size() != hashing::SALT_SIZE)) {
+            std::cerr << "[WARNING] salt for " << email << " has wrong size" << std::endl;
+            return false;
+        }
+        return true;
+    }
+
+    template<typename HASH_FUNC>
+    void DB::attack_base(const std::string& tag, std::string sql, bool check_salt,
+                         std::span<uint8_t> hash_buf, HASH_FUNC hash_func) {
+        if (!connection) {
+            std::cerr << "[ERROR] call to DB::attack without connection" << std::endl;
+            return;
+        }
+        sqlite3 *db = (sqlite3*) connection;
+
+        sqlite3_stmt *stmt = nullptr;
+        int res = sqlite3_prepare_v2(db, sql.data(), (int)sql.size(), &stmt, nullptr);
+        if (res) {
+            std::cerr << "[ERROR] " << sqlite3_errmsg(db) << std::endl;
+            return;
+        }
+
+        size_t found   = 0;
+        size_t total   = 0;
+        size_t skipped = 0;
+        const Clock::time_point time_start = Clock::now();
+        while ((res = sqlite3_step(stmt)) == SQLITE_ROW) {
+            if (sqlite3_column_count(stmt) != (check_salt ? 3 : 2)) {
+                std::cerr << "[WARNING] unexpected column count" << std::endl;
+                skipped++;
+                continue;
+            }
+
+            std::string_view email{(char*) sqlite3_column_blob(stmt, 0), (size_t) sqlite3_column_bytes(stmt, 0)};
+            std::span hash{(uint8_t*) sqlite3_column_blob(stmt, 1), (size_t) sqlite3_column_bytes(stmt, 1)};
+            std::span<uint8_t> salt;
+            if (check_salt)
+                salt = std::span{(uint8_t*) sqlite3_column_blob(stmt, 2), (size_t) sqlite3_column_bytes(stmt, 2)};
+            total++;
+
+            if (!check_row(email, hash, hash_buf.size(), salt, check_salt)) {
+                skipped++;
+                continue;
+            }
+
+            const Clock::time_point time_start_pw = Clock::now();
+            for (size_t i = 0; i < rainbow::passwd.size(); ++i) {
+                const std::string_view passwd = rainbow::passwd[i];
+                hash_func(i, passwd, salt, hash_buf);
+
+                if (memcmp(hash_buf.data(), hash.data(), hash_buf.size()) == 0) {
+                    const Clock::time_point time_end_pw = Clock::now();
+                    long diff_µs  = std::chrono::duration_cast<std::chrono::microseconds>(time_end_pw - time_start_pw).count();
+                    double diff_s = (double)diff_µs / 1000000.0;
+
+                    std::printf("%lfs | %ldµs | login \"%s\" \"%s\"\n", diff_s, diff_µs, email.data(), passwd.data());
+                    found++;
+                    break;
+                }
+            }
+        }
+        if (res != SQLITE_DONE) {
+            std::cerr << "[ERROR] fror sqlite3 " << sqlite3_errmsg(db) << std::endl;
+        }
+        const Clock::time_point time_end = Clock::now();
+        sqlite3_finalize(stmt);
+
+        long diff_µs  = std::chrono::duration_cast<std::chrono::microseconds>(time_end - time_start).count();
+        double diff_s = (double)diff_µs / 1000000.0;
+        std::printf("%s> %3ld/%3ld (skipped: %ld)\n", tag.data(), found, total, skipped);
+        std::cout << tag << "> " << diff_s << "s | " << diff_µs << "µs\n";
+        std::cout << std::endl;
+    }
+
+    void
+    DB::attack_sha512() {
+        std::array<uint8_t, hashing::SHA512_SIZE> hash_buf{};
+
+        attack_base("sha512", "SELECT email, sha512_NoSalt FROM login", false, hash_buf,
+        [](size_t &i, const std::string_view &pw, std::span<uint8_t> &salt, std::span<uint8_t> &hash_buf) {
+            (void) pw; (void) salt;
+            memcpy(hash_buf.data(), rainbow::sha512[i].data(), hashing::SHA512_SIZE);
+        });
+    }
+
+    void
+    DB::attack_sha512_salt() {
+        std::array<uint8_t, hashing::SHA512_SIZE> hash_buf{};
+
+        attack_base("sha512-salt", "SELECT email, sha512_salt, salt FROM login", true, hash_buf,
+        [](size_t &i, const std::string_view &pw, std::span<uint8_t> &salt, std::span<uint8_t> &hash_buf) {
+            (void) i;
+            std::span<uint8_t, hashing::SHA512_SIZE> cal_hash(hash_buf.data(), hashing::SHA512_SIZE);
+            std::span<uint8_t, hashing::SALT_SIZE> salt_span(salt.data(), hashing::SALT_SIZE);
+            hashing::sha512(pw, salt_span, cal_hash);
+        });
+    }
+
+    void
+    DB::attack_argon2id() {
+        std::array<uint8_t, hashing::ARGON2ID_SIZE> hash_buf{};
+
+        attack_base("argon2id", "SELECT email, argon2id, salt FROM login", true, hash_buf,
+        [](size_t &i, const std::string_view &pw, std::span<uint8_t> &salt, std::span<uint8_t> &hash_buf) {
+            (void) i;
+            std::span<uint8_t, hashing::ARGON2ID_SIZE> cal_hash(hash_buf.data(), hashing::ARGON2ID_SIZE);
+            std::span<uint8_t, hashing::SALT_SIZE> salt_span(salt.data(), hashing::SALT_SIZE);
+            hashing::argon2id(pw, salt_span, cal_hash);
+        });
+    }
+
+    void
+    DB::attack() {
+        if (!connection) {
+            std::cerr << "[ERROR] call to DB::attack without connection" << std::endl;
+            return;
+        }
+
+        rainbow::fill_sha512();
+        attack_sha512();
+        attack_sha512_salt();
+        attack_argon2id();
     }
 }

@@ -45,6 +45,15 @@ namespace db {
         bool update_login(const Login &login) const;
         bool save_login(const Login &login) const;
         bool load_login(const std::string_view &user_email, Login &out_login) const;
-    };
 
+        void attack();
+
+    private:
+        template<class HASH_FUNC>
+        void attack_base(const std::string &tag, std::string sql, bool check_salt, std::span<uint8_t> hash_buf,
+                         HASH_FUNC hash_func);
+        void attack_sha512();
+        void attack_sha512_salt();
+        void attack_argon2id();
+    };
 }

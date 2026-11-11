@@ -14,19 +14,21 @@ target_link_libraries(cli PRIVATE SQLite3::SQLite3)
 # BEGINN TOTP-ERGAENZUNG
 find_path(OATH_INCLUDE_DIR
         NAMES oath.h
-        PATHS /opt/homebrew/include /usr/local/include
+        PATHS /opt/homebrew/include /usr/local/include ../oath-toolkit-2.6.15/
         PATH_SUFFIXES liboath
 )
 
 find_library(OATH_LIBRARY
         NAMES oath
-        PATHS /opt/homebrew/lib /usr/local/lib
+        PATHS /opt/homebrew/lib /usr/local/lib ../oath-toolkit-2.6.15/liboath/.libs
 )
 
-if(NOT OATH_INCLUDE_DIR OR NOT OATH_LIBRARY)
-    message(FATAL_ERROR
-            "Liboath fehlt. Bitte oath-toolkit installieren."
-    )
+if(NOT OATH_INCLUDE_DIR)
+    message(FATAL_ERROR "Liboath header nicht gefunden")
+endif()
+
+if(NOT OATH_LIBRARY)
+    message(FATAL_ERROR "Liboath lib nicht gefunden")
 endif()
 
 target_include_directories(cli PRIVATE ${OATH_INCLUDE_DIR})
