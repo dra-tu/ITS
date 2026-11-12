@@ -29,6 +29,6 @@
 ## DB
 
 - add totp field
-  - ??? how to save totp code
+  - how to save totp code --> SecretTotpKey wird verschlüsselt und in einer seperaten Datei gespeichert auf demselben rechner
   - ~~add \[DB::update_login(Login&)\] function~~
 - things for recovery
