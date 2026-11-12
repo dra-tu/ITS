@@ -298,6 +298,34 @@ main_email(int argc, char *argv[]) {
     return 0;
 }
 
+static int
+main_recover_get(int argc, char *argv[]) {
+    if (argc != 2) {
+        std::cerr << "[ERROR] args wrong" << std::endl;
+        std::cerr << "EXPECTED: cli <user>" << std::endl;
+        return 1;
+    }
+
+    std::string user = argv[1];
+
+    return 0;
+}
+
+static int
+main_recover_set(int argc, char *argv[]) {
+    if (argc != 4) {
+        std::cerr << "[ERROR] args wrong" << std::endl;
+        std::cerr << "EXPECTED: cli <user> <new password> <token>" << std::endl;
+        return 1;
+    }
+
+    std::string user     = argv[1];
+    std::string password = argv[2];
+    std::string token    = argv[3];
+
+    return 0;
+}
+
 typedef int (*main_func)(int argc, char *argv[]);
 typedef struct {
     const char *cmd;
@@ -311,6 +339,8 @@ constexpr std::array commands = std::to_array<const cmd>({
     {"get",    "display salt and the hashes of a user",main_get},
     {"attack", "benchmark offline attacks",          main_attack},
     {"r",     "email",   main_email},
+    {"recover-get",     "start recovery process",   main_recover_get},
+    {"recover-set",     "finish recovery process",   main_recover_set},
 });
 
 static void
