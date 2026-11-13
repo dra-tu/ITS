@@ -351,4 +351,137 @@ namespace db {
         attack_sha512_salt();
         attack_argon2id();
     }
+
+    // BEGINN TOTP-ERGAENZUNG
+    // Felder totp_secret_enc, totp_nonce und totp_tag in der Tabelle login ergaenzen
+    // Fuegt die TOTP-Spalten zur Tabelle login hinzu.
+    // Gibt es eine Spalte schon, meldet SQLite einen Fehler, der hier absichtlich ignoriert wird.
+    static void
+    totp_spalten_anlegen(sqlite3 *db) {
+        sqlite3_exec(db, "ALTER TABLE login ADD COLUMN totp_secret_enc BLOB(20)", nullptr, nullptr, nullptr);
+        sqlite3_exec(db, "ALTER TABLE login ADD COLUMN totp_nonce BLOB(12)",      nullptr, nullptr, nullptr);
+        sqlite3_exec(db, "ALTER TABLE login ADD COLUMN totp_tag BLOB(16)",        nullptr, nullptr, nullptr);
+        // Replay-Schutz: zuletzt verwendeter Zeitabschnitt (30-Sekunden-Schritt)
+        sqlite3_exec(db, "ALTER TABLE login ADD COLUMN totp_last_step INTEGER",   nullptr, nullptr, nullptr);
+    }
+
+    //  Datenbankfunktion zum Speichern erweitern
+    //  Verschluesseltes Secret, Nonce und Tag beim Benutzerkonto speichern
+    //  Mit ersetzen = true nutzbar fuer die Recovery
+    bool
+    DB::save_totp(const Login &login, bool ersetzen) const {
+        // Registrierung: nur speichern, wenn das Konto noch kein Secret hat.
+        static std::string_view sql_neu =
+            "UPDATE login SET totp_secret_enc = :ENC, totp_nonce = :NONCE, totp_tag = :TAG"
+            " WHERE email = :EMAIL AND totp_secret_enc IS NULL";
+        // Recovery: altes Secret durch neues ersetzen.
+        static std::string_view sql_ersetzen =
+            "UPDATE login SET totp_secret_enc = :ENC, totp_nonce = :NONCE, totp_tag = :TAG"
+            " WHERE email = :EMAIL";
+
+        if (!connection) return false;
+        sqlite3 *db = (sqlite3*) connection;
+        totp_spalten_anlegen(db);
+
+        std::string_view sql = sql_neu;
+        if (ersetzen) sql = sql_ersetzen;
+
+        sqlite3_stmt *stmt = nullptr;
+        int res = sqlite3_prepare_v2(db, sql.data(), (int) sql.size(), &stmt, nullptr);
+        if (res) {
+            std::cout << sqlite3_errmsg(db) << "\n";
+            return false;
+        }
+
+        const int email_idx = sqlite3_bind_parameter_index(stmt, ":EMAIL");
+        const int enc_idx   = sqlite3_bind_parameter_index(stmt, ":ENC");
+        const int nonce_idx = sqlite3_bind_parameter_index(stmt, ":NONCE");
+        const int tag_idx   = sqlite3_bind_parameter_index(stmt, ":TAG");
+        sqlite3_bind_text(stmt, email_idx, login.email,           -1,               SQLITE_STATIC);
+        sqlite3_bind_blob(stmt, enc_idx,   login.totp_secret_enc, TOTP_SECRET_SIZE, SQLITE_STATIC);
+        sqlite3_bind_blob(stmt, nonce_idx, login.totp_nonce,      TOTP_NONCE_SIZE,  SQLITE_STATIC);
+        sqlite3_bind_blob(stmt, tag_idx,   login.totp_tag,        TOTP_TAG_SIZE,    SQLITE_STATIC);
+
+        res = sqlite3_step(stmt);
+        if (res != SQLITE_DONE) std::cerr << sqlite3_errmsg(db) << "\n";
+        sqlite3_finalize(stmt);
+
+        // Erfolgreich nur, wenn genau ein Konto geaendert wurde.
+        if (res != SQLITE_DONE) return false;
+        if (sqlite3_changes(db) != 1) return false;
+        return true;
+    }
+
+    //  Datenbankfunktion zum Laden erweitern
+    //  Verschluesseltes Secret des jeweiligen Benutzerkontos aus der Datenbank laden
+    bool
+    DB::load_totp(const std::string_view &user_email, Login &out_login) const {
+        static std::string_view sql_query =
+            "SELECT totp_secret_enc, totp_nonce, totp_tag FROM login"
+            " WHERE email = :EMAIL";
+
+        if (!connection) return false;
+        sqlite3 *db = (sqlite3*) connection;
+        totp_spalten_anlegen(db);
+
+        user_email.copy(out_login.email, hashing::EMAIL_SIZE - 1);
+
+        sqlite3_stmt *stmt = nullptr;
+        int res = sqlite3_prepare_v2(db, sql_query.data(), (int) sql_query.size(), &stmt, nullptr);
+        if (res) {
+            std::cout << sqlite3_errmsg(db) << "\n";
+            return false;
+        }
+
+        const int email_idx = sqlite3_bind_parameter_index(stmt, ":EMAIL");
+        sqlite3_bind_text(stmt, email_idx, out_login.email, -1, SQLITE_STATIC);
+
+        bool found = false;
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            // copy_column_value prueft auch die Laenge (leere Spalte -> false)
+            found = copy_column_value(stmt, 0, out_login.totp_secret_enc)
+                 && copy_column_value(stmt, 1, out_login.totp_nonce)
+                 && copy_column_value(stmt, 2, out_login.totp_tag);
+        }
+        sqlite3_finalize(stmt);
+        return found;
+    }
+
+    // Replay-Schutz: Speichert den Zeitabschnitt eines gueltigen Codes beim Konto.
+    // Das UPDATE klappt nur, wenn dieser Zeitabschnitt NEUER ist als der zuletzt benutzte.
+    // Wurde der Code schon einmal verwendet, wird keine Zeile geaendert -> false.
+    bool
+    DB::use_totp_step(const std::string_view &user_email, int64_t step) const {
+        static std::string_view sql =
+            "UPDATE login SET totp_last_step = :STEP"
+            " WHERE email = :EMAIL AND (totp_last_step IS NULL OR totp_last_step < :STEP)";
+
+        if (!connection) return false;
+        sqlite3 *db = (sqlite3*) connection;
+        totp_spalten_anlegen(db);
+
+        char email[hashing::EMAIL_SIZE] = {};
+        user_email.copy(email, hashing::EMAIL_SIZE - 1);
+
+        sqlite3_stmt *stmt = nullptr;
+        int res = sqlite3_prepare_v2(db, sql.data(), (int) sql.size(), &stmt, nullptr);
+        if (res) {
+            std::cout << sqlite3_errmsg(db) << "\n";
+            return false;
+        }
+
+        const int email_idx = sqlite3_bind_parameter_index(stmt, ":EMAIL");
+        const int step_idx  = sqlite3_bind_parameter_index(stmt, ":STEP");
+        sqlite3_bind_text(stmt, email_idx, email, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, step_idx, step);
+
+        res = sqlite3_step(stmt);
+        if (res != SQLITE_DONE) std::cerr << sqlite3_errmsg(db) << "\n";
+        sqlite3_finalize(stmt);
+
+        if (res != SQLITE_DONE) return false;
+        if (sqlite3_changes(db) != 1) return false;   // Code schon benutzt
+        return true;
+    }
+    // ENDE TOTP-ERGAENZUNG
 }
