@@ -33,4 +33,5 @@ endif()
 
 target_include_directories(cli PRIVATE ${OATH_INCLUDE_DIR})
 target_link_libraries(cli PRIVATE ${OATH_LIBRARY})
+target_sources(cli PRIVATE totp.cpp totp.h)   # TOTP-Dateien mitbauen
 # ENDE TOTP-ERGAENZUNG

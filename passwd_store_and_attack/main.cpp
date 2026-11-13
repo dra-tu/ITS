@@ -14,6 +14,8 @@ using Clock = std::chrono::steady_clock;
 #include <ctime>
 #include <cstdlib>
 #include <oath.h>
+#include "totp.h"   // TOTP-Funktionen einbinden
+#include <openssl/crypto.h>   // fuer OPENSSL_cleanse
 // ENDE TOTP-ERGAENZUNG
 
 #define SQL_LOGIN_T "login"
@@ -47,38 +49,24 @@ main_get(int argc, char *argv[]) {
     return 0;
 }
 // BEGINN TOTP-ERGAENZUNG
-static bool pruefeTotp(const std::string& code) {
-    // Festes Test-Secret fuer den Prototyp.
-    // Keine Speicherung in der Datenbank.
-    const std::string secretBase32 =
-        "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
-
+static bool pruefeTotp(const std::string& email, const std::string& code) {
     // Nur genau sechs Ziffern zulassen.
     if (code.length() != 6 ||
         code.find_first_not_of("0123456789") != std::string::npos) {
         std::cout << "TOTP-Code muss aus genau sechs Ziffern bestehen.\n";
         return false;
-        }
+    }
+
+    // Verschluesseltes Secret des Kontos laden und entschluesseln
+    //  Ersetzt das bisher fest hinterlegte Test-Secret
+    uint8_t secret[db::TOTP_SECRET_SIZE];
+    if (!totp::secretLaden(email, secret)) {
+        return false;   //  Entschluesselung fehlgeschlagen -> ablehnen
+    }
 
     if (oath_init() != OATH_OK) {
         std::cout << "TOTP-Bibliothek konnte nicht gestartet werden.\n";
-        return false;
-    }
-
-    // Base32-Darstellung in die Schluesselbytes umwandeln.
-    char* secret = nullptr;
-    std::size_t secretLaenge = 0;
-
-    int status = oath_base32_decode(
-        secretBase32.c_str(),
-        secretBase32.size(),
-        &secret,
-        &secretLaenge
-    );
-
-    if (status != OATH_OK) {
-        std::cout << "TOTP-Secret konnte nicht decodiert werden.\n";
-        oath_done();
+        OPENSSL_cleanse(secret, sizeof(secret));
         return false;
     }
 
@@ -86,7 +74,7 @@ static bool pruefeTotp(const std::string& code) {
 
     if (jetzt == static_cast<std::time_t>(-1)) {
         std::cout << "Systemzeit konnte nicht gelesen werden.\n";
-        std::free(secret);
+        OPENSSL_cleanse(secret, sizeof(secret));
         oath_done();
         return false;
     }
@@ -95,9 +83,10 @@ static bool pruefeTotp(const std::string& code) {
         << "TOTP: 6 Ziffern, feste Zeitabschnitte von 30 Sekunden.\n"
         << "Nur der Code des aktuellen Zeitabschnitts wird akzeptiert.\n";
 
+    //  Eingegebenen Code mit dem benutzerspezifischen Secret und der aktuellen Zeit pruefen
     int ergebnis = oath_totp_validate(
-        secret,
-        secretLaenge,
+        (const char*) secret,
+        sizeof(secret),
         jetzt,
         30,              // Zeitabschnitt: 30 Sekunden
         0,               // Startzeitpunkt: Unix-Epochenbeginn
@@ -105,10 +94,23 @@ static bool pruefeTotp(const std::string& code) {
         code.c_str()
     );
 
-    std::free(secret);
+    OPENSSL_cleanse(secret, sizeof(secret));
     oath_done();
 
-    return ergebnis >= 0;
+    if (ergebnis < 0) {
+        return false;   // Ungueltiger Code -> false -> Anmeldung abgelehnt
+    }
+
+    // Replay-Schutz: Jeder Code darf nur einmal verwendet werden.
+    // Zeitabschnitt = aktuelle Zeit / 30 Sekunden (wie bei der TOTP-Berechnung).
+    // Erst NACH einem gueltigen Code markieren, damit falsche Codes nichts verbrauchen.
+    const int64_t zeitschritt = jetzt / 30;
+    if (!totp::codeVerbrauchen(email, zeitschritt)) {
+        std::cout << "Dieser TOTP-Code wurde bereits verwendet. Bitte auf den naechsten Code warten.\n";
+        return false;
+    }
+
+    return true;
 }
 // ENDE TOTP-ERGAENZUNG
 static int
@@ -121,7 +123,8 @@ main_login(int argc, char *argv[]) {
     // Ranim TOTP prüfung
     std::string totp = argv[3];
 
-    if (!pruefeTotp(totp)) {  // TOTP-Pruefung eingefuegt
+    // TOTP-Code des Benutzerkontos pruefen, bei Fehler Anmeldung ablehnen
+    if (!pruefeTotp(argv[1], totp)) {  // TOTP-Pruefung eingefuegt
         std::cout << "Wrong totp\n";
         return 1;
     }
@@ -167,6 +170,14 @@ main_new(int argc, char *argv[]) {
     /// ==================================================
 
     db.disconnect();
+
+    // BEGINN TOTP-ERGAENZUNG
+    //  Registrierung: Secret erzeugen, anzeigen, verschluesseln, speichern
+    if (!totp::neuesSecretEinrichten(argv[1], false)) {
+        std::cout << "TOTP konnte nicht eingerichtet werden.\n";
+        return 1;
+    }
+    // ENDE TOTP-ERGAENZUNG
 
     return 0;
 }
