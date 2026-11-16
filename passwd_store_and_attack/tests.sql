@@ -4,6 +4,14 @@ CREATE TABLE login  (
     sha512_salt   BLOB(64),
     sha512_NoSalt BLOB(64),
     argon2id      BLOB(32)
+    totp_secret   TEXT // jeder Benutzer hat eigenes TOTP Secret
+);
+//Recovery-Informationen werden getrennt con Login Daten gespeichert
+CREATE TABLE recovery (
+    email       VARCHAR(254) PRIMARY KEY,
+    token_hash  BLOB NOT NULL,
+    expires_at  INTEGER NOT NULL,
+    FOREIGN KEY (email) REFERENCES login(email)
 );
 
 CREATE TABLE rainbow (
