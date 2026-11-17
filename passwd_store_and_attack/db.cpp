@@ -460,9 +460,6 @@ namespace db {
         sqlite3 *db = (sqlite3*) connection;
         totp_spalten_anlegen(db);
 
-        char email[hashing::EMAIL_SIZE] = {};
-        user_email.copy(email, hashing::EMAIL_SIZE - 1);
-
         sqlite3_stmt *stmt = nullptr;
         int res = sqlite3_prepare_v2(db, sql.data(), (int) sql.size(), &stmt, nullptr);
         if (res) {
@@ -472,7 +469,7 @@ namespace db {
 
         const int email_idx = sqlite3_bind_parameter_index(stmt, ":EMAIL");
         const int step_idx  = sqlite3_bind_parameter_index(stmt, ":STEP");
-        sqlite3_bind_text(stmt, email_idx, email, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, email_idx, user_email.data(), (int) user_email.size(), SQLITE_STATIC);
         sqlite3_bind_int64(stmt, step_idx, step);
 
         res = sqlite3_step(stmt);

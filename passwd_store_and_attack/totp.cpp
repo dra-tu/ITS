@@ -39,6 +39,7 @@ namespace totp {
             std::fclose(datei);
             if (gelesen != KEY_SIZE) {
                 std::cout << "Master-Key-Datei ist beschaedigt: " << pfad << "\n";
+                std::perror("Fehler");
                 return false;
             }
             return true;
@@ -53,6 +54,7 @@ namespace totp {
         int fd = open(pfad.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
         if (fd < 0) {
             std::cout << "Master-Key-Datei konnte nicht angelegt werden: " << pfad << "\n";
+            std::perror("Fehler");
             return false;
         }
         ssize_t geschrieben = write(fd, key, KEY_SIZE);
@@ -64,11 +66,9 @@ namespace totp {
     }
 
     // ---------- AES-256-GCM ----------
-    // Die E-Mail wird als Zusatzdaten (AAD) mitgeprueft. Dadurch passt ein
-    // verschluesseltes Secret nur zu genau diesem Konto.
 
     // Secret mit dem Master-Key verschluesseln (AES-256-GCM)
-    static bool verschluesseln(const uint8_t key[KEY_SIZE], const std::string &email,
+    static bool verschluesseln(const uint8_t key[KEY_SIZE],
                                const uint8_t secret[db::TOTP_SECRET_SIZE], db::Login &login) {
         // Fuer jede Verschluesselung eine neue zufaellige Nonce
         if (RAND_bytes(login.totp_nonce, db::TOTP_NONCE_SIZE) != 1) return false;
@@ -79,7 +79,6 @@ namespace totp {
         bool ok = true;
         int len = 0;
         if (ok && EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, key, login.totp_nonce) != 1) ok = false;
-        if (ok && EVP_EncryptUpdate(ctx, nullptr, &len, (const uint8_t *) email.c_str(), (int) email.size()) != 1) ok = false;
         if (ok && EVP_EncryptUpdate(ctx, login.totp_secret_enc, &len, secret, db::TOTP_SECRET_SIZE) != 1) ok = false;
         if (ok && EVP_EncryptFinal_ex(ctx, login.totp_secret_enc + len, &len) != 1) ok = false;
         if (ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, db::TOTP_TAG_SIZE, login.totp_tag) != 1) ok = false;
@@ -90,7 +89,7 @@ namespace totp {
 
     // Secret entschluesseln
     // Liefert false bei fehlgeschlagener Entschluesselung
-    static bool entschluesseln(const uint8_t key[KEY_SIZE], const std::string &email,
+    static bool entschluesseln(const uint8_t key[KEY_SIZE],
                                db::Login &login, uint8_t secret[db::TOTP_SECRET_SIZE]) {
         EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
         if (ctx == nullptr) return false;
@@ -98,7 +97,6 @@ namespace totp {
         bool ok = true;
         int len = 0;
         if (ok && EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, key, login.totp_nonce) != 1) ok = false;
-        if (ok && EVP_DecryptUpdate(ctx, nullptr, &len, (const uint8_t *) email.c_str(), (int) email.size()) != 1) ok = false;
         if (ok && EVP_DecryptUpdate(ctx, secret, &len, login.totp_secret_enc, db::TOTP_SECRET_SIZE) != 1) ok = false;
         if (ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, db::TOTP_TAG_SIZE, login.totp_tag) != 1) ok = false;
         // Hier wird der Tag geprueft: passt er nicht, wurde etwas veraendert
@@ -123,7 +121,7 @@ namespace totp {
         // 2. Mit dem Master-Key verschluesseln
         db::Login login{};
         email.copy(login.email, hashing::EMAIL_SIZE - 1);
-        if (ok) ok = verschluesseln(key, email, secret, login);
+        if (ok) ok = verschluesseln(key, secret, login);
 
         // Verschluesseltes Secret, Nonce und Tag beim Benutzerkonto in der Datenbank speichern
         // Bei ersetzen = true wird das alte Secret ersetzt (Recovery)
@@ -186,7 +184,7 @@ namespace totp {
         // Entschluesseln
         // Fehlgeschlagene Entschluesselung -> false -> Anmeldung wird abgelehnt
         // Entschluesseln (schlaegt fehl bei falschem Key oder manipulierten Daten)
-        ok = entschluesseln(key, email, login, secret);
+        ok = entschluesseln(key, login, secret);
         OPENSSL_cleanse(key, sizeof(key));
         if (!ok) {
             std::cout << "TOTP-Secret konnte nicht entschluesselt werden.\n";
