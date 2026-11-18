@@ -3,10 +3,10 @@ CREATE TABLE login  (
     salt          BLOB(16),
     sha512_salt   BLOB(64),
     sha512_NoSalt BLOB(64),
-    argon2id      BLOB(32)
-    totp_secret   TEXT // jeder Benutzer hat eigenes TOTP Secret
+    argon2id      BLOB(32),
+    totp_secret   TEXT -- jeder Benutzer hat eigenes TOTP Secret
 );
-//Recovery-Informationen werden getrennt con Login Daten gespeichert
+--Recovery-Informationen werden getrennt con Login Daten gespeichert
 CREATE TABLE recovery (
     email       VARCHAR(254) PRIMARY KEY,
     token_hash  BLOB NOT NULL,
