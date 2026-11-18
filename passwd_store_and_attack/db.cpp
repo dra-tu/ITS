@@ -237,6 +237,7 @@ namespace db {
     template<typename HASH_FUNC>
     void DB::attack_base(const std::string& tag, std::string sql, bool check_salt,
                          std::span<uint8_t> hash_buf, HASH_FUNC hash_func) {
+        std::cout << "\n<" << tag << ">\n";
         if (!connection) {
             std::cerr << "[ERROR] call to DB::attack without connection" << std::endl;
             return;
@@ -253,6 +254,8 @@ namespace db {
         size_t found   = 0;
         size_t total   = 0;
         size_t skipped = 0;
+        long time_pw_sum_ns = 0;
+        long pw_tried = 0;
         const Clock::time_point time_start = Clock::now();
         while ((res = sqlite3_step(stmt)) == SQLITE_ROW) {
             if (sqlite3_column_count(stmt) != (check_salt ? 3 : 2)) {
@@ -275,14 +278,19 @@ namespace db {
 
             const Clock::time_point time_start_pw = Clock::now();
             for (size_t i = 0; i < rainbow::passwd.size(); ++i) {
+                pw_tried += 1;
+                const Clock::time_point time_pear_pw = Clock::now();
+
                 const std::string_view passwd = rainbow::passwd[i];
                 hash_func(i, passwd, salt, hash_buf);
+                bool match = memcmp(hash_buf.data(), hash.data(), hash_buf.size()) == 0;
 
-                if (memcmp(hash_buf.data(), hash.data(), hash_buf.size()) == 0) {
-                    const Clock::time_point time_end_pw = Clock::now();
-                    long diff_µs  = std::chrono::duration_cast<std::chrono::microseconds>(time_end_pw - time_start_pw).count();
-                    double diff_s = (double)diff_µs / 1000000.0;
+                const Clock::time_point time_end_pw = Clock::now();
+                long diff_µs  = std::chrono::duration_cast<std::chrono::microseconds>(time_end_pw - time_start_pw).count();
+                time_pw_sum_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(time_end_pw - time_pear_pw).count();
+                double diff_s = (double)diff_µs / 1000000.0;
 
+                if (match) {
                     std::printf("%lfs | %ldµs | login \"%s\" \"%s\"\n", diff_s, diff_µs, email.data(), passwd.data());
                     found++;
                     break;
@@ -295,10 +303,22 @@ namespace db {
         const Clock::time_point time_end = Clock::now();
         sqlite3_finalize(stmt);
 
-        long diff_µs  = std::chrono::duration_cast<std::chrono::microseconds>(time_end - time_start).count();
-        double diff_s = (double)diff_µs / 1000000.0;
-        std::printf("%s> %3ld/%3ld (skipped: %ld)\n", tag.data(), found, total, skipped);
-        std::cout << tag << "> " << diff_s << "s | " << diff_µs << "µs\n";
+        long time_total_ns  = std::chrono::duration_cast<std::chrono::nanoseconds>(time_end - time_start).count();
+        long time_total_µs  = time_total_ns / 1000;
+        double time_total_s = (double)time_total_µs / 1000000.0;
+        double time_total_m = (double)time_total_s / 60;
+
+        long time_pw_sum_µs  = time_pw_sum_ns / 1000;
+        double time_pw_sum_s = (double)time_pw_sum_µs / 1000000.0;
+        double time_pw_sum_m = (double)time_pw_sum_s / 60;
+
+        std::cout << "found:           " << found << "/" << total << "(skipped: " << skipped << ")\n";
+        std::cout << "passworts tried: " << pw_tried << "\n";
+        std::cout << "hashing time:    " << time_pw_sum_m << " min | " << time_pw_sum_s << " s | " << time_pw_sum_µs << " µs | " << time_pw_sum_ns << " ns\n";
+        std::cout << "total time:      " << time_total_m << " min | " << time_total_s << " s | " << time_total_µs << " µs | " << time_total_ns << " ns\n";
+        std::cout << "overhead time:   " << (int)((1-(float)time_pw_sum_ns/(float)time_total_ns)*100) << " % || " << time_total_s-time_pw_sum_s << " s | " << time_total_µs-time_pw_sum_µs << " µs | " << time_total_ns-time_pw_sum_ns << " ns\n";
+        std::cout << "pw/s:            " << (double)pw_tried/time_total_s << "\n";
+        std::cout << "pw/s:            " << (double)pw_tried/time_pw_sum_s << "\n";
         std::cout << std::endl;
     }
 
