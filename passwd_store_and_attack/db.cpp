@@ -501,4 +501,174 @@ namespace db {
         return true;
     }
     // ENDE TOTP-ERGAENZUNG
+
+    // BEGINN RECOVERY-ERGAENZUNG (Dijana)
+    // Spalten fuer die Recovery anlegen (Fehler "Spalte existiert schon" wird ignoriert,
+    // genauso wie bei den TOTP-Spalten oben).
+    static void
+    recovery_spalten_anlegen(sqlite3 *db) {
+        sqlite3_exec(db, "ALTER TABLE login ADD COLUMN recovery_hash BLOB(64)",    nullptr, nullptr, nullptr);
+        sqlite3_exec(db, "ALTER TABLE login ADD COLUMN recovery_expires INTEGER", nullptr, nullptr, nullptr);
+        // Demo der unsicheren Variante: 1 = 2FA fuer dieses Konto abgeschaltet
+        sqlite3_exec(db, "ALTER TABLE login ADD COLUMN totp_disabled INTEGER",    nullptr, nullptr, nullptr);
+    }
+
+    // Token-Hash und Ablaufzeitpunkt (Unix-Zeit) speichern -> Konto ist ab jetzt gesperrt
+    bool
+    DB::recovery_start(const std::string_view &user_email,
+                       std::span<const uint8_t> token_hash, int64_t expires) const {
+        static std::string_view sql =
+            "UPDATE login SET recovery_hash = :HASH, recovery_expires = :EXPIRES"
+            " WHERE email = :EMAIL";
+
+        if (!connection) return false;
+        sqlite3 *db = (sqlite3*) connection;
+        recovery_spalten_anlegen(db);
+
+        sqlite3_stmt *stmt = nullptr;
+        if (sqlite3_prepare_v2(db, sql.data(), (int) sql.size(), &stmt, nullptr)) {
+            std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;
+            return false;
+        }
+
+        sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":EMAIL"),
+                          user_email.data(), (int) user_email.size(), SQLITE_STATIC);
+        sqlite3_bind_blob(stmt, sqlite3_bind_parameter_index(stmt, ":HASH"),
+                          token_hash.data(), (int) token_hash.size(), SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, sqlite3_bind_parameter_index(stmt, ":EXPIRES"), expires);
+
+        int res = sqlite3_step(stmt);
+        if (res != SQLITE_DONE) std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;
+        sqlite3_finalize(stmt);
+
+        // erfolgreich nur, wenn genau ein Konto geaendert wurde
+        return res == SQLITE_DONE && sqlite3_changes(db) == 1;
+    }
+
+    bool
+    DB::recovery_load(const std::string_view &user_email,
+                      std::span<uint8_t> out_hash, int64_t &out_expires) const {
+        static std::string_view sql =
+            "SELECT recovery_hash, recovery_expires FROM login WHERE email = :EMAIL";
+
+        if (!connection) return false;
+        sqlite3 *db = (sqlite3*) connection;
+        recovery_spalten_anlegen(db);
+
+        sqlite3_stmt *stmt = nullptr;
+        if (sqlite3_prepare_v2(db, sql.data(), (int) sql.size(), &stmt, nullptr)) {
+            std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;
+            return false;
+        }
+
+        sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":EMAIL"),
+                          user_email.data(), (int) user_email.size(), SQLITE_STATIC);
+
+        bool found = false;
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            // copy_column_value liefert false, wenn die Spalte leer (NULL) ist
+            found = copy_column_value(stmt, 0, out_hash);
+            out_expires = sqlite3_column_int64(stmt, 1);
+        }
+        sqlite3_finalize(stmt);
+        return found;
+    }
+
+    bool
+    DB::recovery_clear(const std::string_view &user_email, bool totp_neu) const {
+        static std::string_view sql_normal =
+            "UPDATE login SET recovery_hash = NULL, recovery_expires = NULL"
+            " WHERE email = :EMAIL";
+        // Neues Secret: der alte Replay-Zaehler gehoert zum alten Secret und wuerde
+        // sonst einen gueltigen Code im selben 30-Sekunden-Fenster ablehnen.
+        static std::string_view sql_totp_neu =
+            "UPDATE login SET recovery_hash = NULL, recovery_expires = NULL, totp_last_step = NULL,"
+            " totp_disabled = NULL"
+            " WHERE email = :EMAIL";
+        std::string_view sql = totp_neu ? sql_totp_neu : sql_normal;
+
+        if (!connection) return false;
+        sqlite3 *db = (sqlite3*) connection;
+        recovery_spalten_anlegen(db);
+
+        sqlite3_stmt *stmt = nullptr;
+        if (sqlite3_prepare_v2(db, sql.data(), (int) sql.size(), &stmt, nullptr)) {
+            std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;
+            return false;
+        }
+
+        sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":EMAIL"),
+                          user_email.data(), (int) user_email.size(), SQLITE_STATIC);
+
+        int res = sqlite3_step(stmt);
+        if (res != SQLITE_DONE) std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;
+        sqlite3_finalize(stmt);
+        return res == SQLITE_DONE;
+    }
+
+    bool
+    DB::totp_disable_set(const std::string_view &user_email, bool disabled) const {
+        static std::string_view sql =
+            "UPDATE login SET totp_disabled = :D WHERE email = :EMAIL";
+
+        if (!connection) return false;
+        sqlite3 *db = (sqlite3*) connection;
+        recovery_spalten_anlegen(db);
+
+        sqlite3_stmt *stmt = nullptr;
+        if (sqlite3_prepare_v2(db, sql.data(), (int) sql.size(), &stmt, nullptr)) {
+            std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;
+            return false;
+        }
+        sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":EMAIL"),
+                          user_email.data(), (int) user_email.size(), SQLITE_STATIC);
+        sqlite3_bind_int(stmt, sqlite3_bind_parameter_index(stmt, ":D"), disabled ? 1 : 0);
+
+        int res = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+        return res == SQLITE_DONE && sqlite3_changes(db) == 1;
+    }
+
+    bool
+    DB::totp_disable_get(const std::string_view &user_email) const {
+        static std::string_view sql =
+            "SELECT totp_disabled FROM login WHERE email = :EMAIL";
+
+        if (!connection) return false;
+        sqlite3 *db = (sqlite3*) connection;
+        recovery_spalten_anlegen(db);
+
+        sqlite3_stmt *stmt = nullptr;
+        if (sqlite3_prepare_v2(db, sql.data(), (int) sql.size(), &stmt, nullptr)) return false;
+        sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":EMAIL"),
+                          user_email.data(), (int) user_email.size(), SQLITE_STATIC);
+
+        bool disabled = false;
+        if (sqlite3_step(stmt) == SQLITE_ROW) disabled = sqlite3_column_int(stmt, 0) == 1;
+        sqlite3_finalize(stmt);
+        return disabled;
+    }
+
+    // Ersetzt das verschluesselte Secret durch Zufallsbytes. Nonce und Tag passen dann nicht mehr,
+    // die Entschluesselung schlaegt fehl -> es gibt keinen gueltigen Code mehr (Handy "verloren").
+    bool
+    DB::totp_lose(const std::string_view &user_email) const {
+        static std::string_view sql =
+            "UPDATE login SET totp_secret_enc = randomblob(20) WHERE email = :EMAIL"
+            " AND totp_secret_enc IS NOT NULL";
+
+        if (!connection) return false;
+        sqlite3 *db = (sqlite3*) connection;
+        totp_spalten_anlegen(db);
+
+        sqlite3_stmt *stmt = nullptr;
+        if (sqlite3_prepare_v2(db, sql.data(), (int) sql.size(), &stmt, nullptr)) return false;
+        sqlite3_bind_text(stmt, sqlite3_bind_parameter_index(stmt, ":EMAIL"),
+                          user_email.data(), (int) user_email.size(), SQLITE_STATIC);
+
+        int res = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+        return res == SQLITE_DONE && sqlite3_changes(db) == 1;
+    }
+    // ENDE RECOVERY-ERGAENZUNG
 }
