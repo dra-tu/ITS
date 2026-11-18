@@ -451,49 +451,6 @@ main_recover_get(int argc, char *argv[]) {
     return 0;
 }
 
-
-    // Zufällige Bytes in einen lesbaren Hex-Token umwandeln
-    const char hex[] = "0123456789abcdef";
-    std::string token;
-
-    for (uint8_t byte : random_bytes) {
-        token += hex[byte >> 4];
-        token += hex[byte & 0x0F];
-    }
-
-    // SHA-256-Hash des Tokens berechnen
-    std::array<uint8_t, SHA256_DIGEST_LENGTH> token_hash{};
-
-    SHA256(
-        reinterpret_cast<const unsigned char*>(token.data()),
-        token.size(),
-        token_hash.data()
-    );
-
-    // Ablaufzeit: eine Minute ab jetzt
-    const int64_t expires_at =
-        std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()
-        ).count() + 60;
-
-    if (!db.start_recovery(user, token_hash, expires_at)) {
-        std::cerr << "Could not start recovery." << std::endl;
-        db.disconnect();
-        return 1;
-    }
-
-    db.disconnect();
-
-    std::cout << "\n[SIMULATED EMAIL]\n";
-    std::cout << "Recovery token for " << user << ":\n";
-    std::cout << token << "\n";
-    std::cout << "This token expires in 60 seconds.\n";
-
-    return 0;
-}
-
-
-
 static int
 main_recover_set(int argc, char *argv[]) {
     if (argc != 3) {

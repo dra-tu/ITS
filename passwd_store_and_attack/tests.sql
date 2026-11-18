@@ -6,6 +6,9 @@ CREATE TABLE login  (
     argon2id      BLOB(32),
     totp_secret   TEXT -- jeder Benutzer hat eigenes TOTP Secret
 );
+
+ALTER TABLE login ADD COLUMN totp_secret TEXT;
+
 --Recovery-Informationen werden getrennt con Login Daten gespeichert
 CREATE TABLE recovery (
     email       VARCHAR(254) PRIMARY KEY,
