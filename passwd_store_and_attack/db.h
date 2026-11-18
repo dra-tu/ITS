@@ -66,6 +66,24 @@ namespace db {
         bool use_totp_step(const std::string_view &user_email, int64_t step) const;
         // ENDE TOTP-ERGAENZUNG
 
+        // BEGINN RECOVERY-ERGAENZUNG (Dijana)
+        // Recovery-Token (nur als SHA-512-Hash) und Ablaufzeit beim Konto speichern.
+        // Solange der Eintrag existiert und nicht abgelaufen ist, ist das Konto gesperrt.
+        bool recovery_start(const std::string_view &user_email,
+                            std::span<const uint8_t> token_hash, int64_t expires) const;
+        // Hash und Ablaufzeit laden. false, wenn es keine Recovery-Anfrage gibt.
+        bool recovery_load(const std::string_view &user_email,
+                           std::span<uint8_t> out_hash, int64_t &out_expires) const;
+        // Recovery-Anfrage beenden (Token loeschen -> Sperre aufgehoben).
+        // totp_neu = true: es gibt ein neues TOTP-Secret -> Replay-Zaehler zuruecksetzen
+        bool recovery_clear(const std::string_view &user_email, bool totp_neu = false) const;
+        // Demo (unsichere Variante): 2FA fuer das Konto abschalten / Status lesen
+        bool totp_disable_set(const std::string_view &user_email, bool disabled) const;
+        bool totp_disable_get(const std::string_view &user_email) const;
+        // Demo (Verlust des 2. Faktors): Secret unbrauchbar machen -> kein Code wird mehr akzeptiert
+        bool totp_lose(const std::string_view &user_email) const;
+        // ENDE RECOVERY-ERGAENZUNG
+
         void attack();
 
     private:
