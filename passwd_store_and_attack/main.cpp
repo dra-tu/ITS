@@ -217,26 +217,16 @@ main_new(int argc, char *argv[]) {
     db::DB db{};
     db::Login login{};
 
-    if (!db.connect()) return 1;
     login.create(argv[1], argv[2]);
 
-    /// ==================================================
-    /// use ONLY one off the next two lines !!!!!!!!!!!
+    if (!db.connect()) return 1;
 
-    db.save_login(login);
-    // db.update_login(login);
-
-    /// ==================================================
-
-    db.disconnect();
-
-    // BEGINN TOTP-ERGAENZUNG
-    //  Registrierung: Secret erzeugen, anzeigen, verschluesseln, speichern
-    if (!totp::neuesSecretEinrichten(argv[1], false)) {
-        std::cout << "TOTP konnte nicht eingerichtet werden.\n";
+    if (!db.save_and_new_totp(login, false)) {
+        std::cout << "Benutzer konnte nicht eingerichtet werden.\n";
         return 1;
     }
-    // ENDE TOTP-ERGAENZUNG
+
+    db.disconnect();
 
     return 0;
 }
@@ -509,12 +499,10 @@ main_recover_set(int argc, char *argv[]) {
         std::cerr << "[ERROR] Passwort konnte nicht gehasht werden" << std::endl;
         return 1;
     }
-    db.update_login(neu);
 
-    // 4. Neuer TOTP-Code (ersetzt das alte Secret, wird einmal angezeigt)
-    if (!totp::neuesSecretEinrichten(user, true)) {
+    if (!db.save_and_new_totp(neu, true)) {
         db.disconnect();
-        std::cerr << "[ERROR] TOTP konnte nicht erneuert werden. Token bleibt gueltig, bitte nochmal versuchen.\n";
+        std::cerr << "[ERROR] Benutzer konnte nicht bearbeitet werden. Token bleibt gueltig, bitte nochmal versuchen.\n";
         return 1;
     }
 

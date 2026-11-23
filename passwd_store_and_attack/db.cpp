@@ -692,7 +692,7 @@ namespace db {
         if (replace) ok = update_login(login);
         else         ok = save_login(login);
 
-        if (ok) ok = totp::neuesSecretEinrichten(login.email, replace);
+        if (ok) ok = totp::neuesSecretEinrichten(this, login.email, replace);
 
         if (!ok) ok = sqlite3_exec(db, "ROLLBACK TRANSACTION", nullptr, nullptr, nullptr);
         else {
