@@ -696,8 +696,7 @@ namespace db {
 
         if (!ok) ok = sqlite3_exec(db, "ROLLBACK TRANSACTION", nullptr, nullptr, nullptr);
         else {
-            ok = sqlite3_exec(db, "COMMIT TRANSACTION", nullptr, nullptr, nullptr);
-            return false;
+            ok = sqlite3_exec(db, "COMMIT TRANSACTION", nullptr, nullptr, nullptr) == SQLITE_OK;
         }
 
         if (!ok) {
