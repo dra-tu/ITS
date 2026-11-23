@@ -4,6 +4,9 @@
 #include <iomanip>
 #include <iostream>
 #include <cstring>
+
+#include <openssl/crypto.h>
+
 #include <chrono>
 using Clock = std::chrono::steady_clock;
 
@@ -15,11 +18,11 @@ namespace db {
 
     bool
     Login::operator==(const Login &other) const {
-        if (0 != memcmp(email,         other.email,         hashing::EMAIL_SIZE)) return false;
-        if (0 != memcmp(salt,          other.salt,          hashing::SALT_SIZE)) return false;
-        if (0 != memcmp(sha512_NoSalt, other.sha512_NoSalt, hashing::SHA512_SIZE)) return false;
-        if (0 != memcmp(sha512_Salt,   other.sha512_Salt,   hashing::SHA512_SIZE)) return false;
-        if (0 != memcmp(argon2id,      other.argon2id,      hashing::ARGON2ID_SIZE)) return false;
+        if (0 != CRYPTO_memcmp(email,         other.email,         hashing::EMAIL_SIZE)) return false;
+        if (0 != CRYPTO_memcmp(salt,          other.salt,          hashing::SALT_SIZE)) return false;
+        if (0 != CRYPTO_memcmp(sha512_NoSalt, other.sha512_NoSalt, hashing::SHA512_SIZE)) return false;
+        if (0 != CRYPTO_memcmp(sha512_Salt,   other.sha512_Salt,   hashing::SHA512_SIZE)) return false;
+        if (0 != CRYPTO_memcmp(argon2id,      other.argon2id,      hashing::ARGON2ID_SIZE)) return false;
 
         return true;
     }
@@ -101,7 +104,7 @@ namespace db {
 
     bool
     DB::copy_column_value(sqlite3_stmt *stmt, const int iCol, std::span<uint8_t> dest) {
-        const void *db_val    = sqlite3_column_blob(stmt,  iCol);
+        const void *db_val = sqlite3_column_blob(stmt,  iCol);
         const size_t db_val_size = (size_t)sqlite3_column_bytes(stmt, iCol);
         if (db_val_size != dest.size()) return false;
         memcpy(dest.data(), db_val, dest.size());

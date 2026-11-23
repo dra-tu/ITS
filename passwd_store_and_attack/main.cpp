@@ -38,6 +38,7 @@ static int
 main_get(int argc, char *argv[]) {
     if (argc != 2) {
         std::cerr << "[ERROR] get args wrong" << std::endl;
+        std::cerr << "EXPECTED: cli get <email/user>" << std::endl;
         return 1;
     }
 
@@ -156,6 +157,7 @@ static int
 main_login(int argc, char *argv[]) {
     if (argc != 4) {
         std::cerr << "[ERROR] login args wrong" << std::endl;
+        std::cerr << "EXPECTED: cli login <email/user> <password> <totp>" << std::endl;
         return 1;
     }
 
@@ -199,7 +201,7 @@ main_login(int argc, char *argv[]) {
         std::cout << "Welcome back " << login_from_db.email << " !!!";
         return 0;
     } else {
-        std::cout << "Wrong password and or email";
+        std::cout << "Wrong password and or email\n";
         return 1;
     }
 }
@@ -208,6 +210,7 @@ static int
 main_new(int argc, char *argv[]) {
     if (argc != 3) {
         std::cerr << "[ERROR] new args wrong" << std::endl;
+        std::cerr << "EXPECTED: cli new <email/user> <password>" << std::endl;
         return 1;
     }
 
@@ -243,6 +246,7 @@ main_attack(int argc, char *argv[]) {
     (void) argc; (void) argv;
     if (argc != 1) {
         std::cerr << "[ERROR] args wrong" << std::endl;
+        std::cerr << "EXPECTED: cli attack" << std::endl;
         return 1;
     }
 
