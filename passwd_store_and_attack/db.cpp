@@ -8,6 +8,8 @@
 #include <openssl/crypto.h>
 
 #include <chrono>
+
+#include "totp.h"
 using Clock = std::chrono::steady_clock;
 
 #include "rainbow.h"
@@ -674,4 +676,35 @@ namespace db {
         return res == SQLITE_DONE && sqlite3_changes(db) == 1;
     }
     // ENDE RECOVERY-ERGAENZUNG
+
+    bool
+    DB::save_and_new_totp(Login &login, const bool replace) const {
+        if (!connection) return false;
+        sqlite3 *db = (sqlite3*) connection;
+
+        // see https://sqlite.org/lang_transaction.html for transaction types
+        if (sqlite3_exec(db, "BEGIN EXCLUSIVE TRANSACTION", nullptr, nullptr, nullptr) != SQLITE_OK) {
+            std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;
+            return false;
+        }
+
+        bool ok = false;
+        if (replace) ok = update_login(login);
+        else         ok = save_login(login);
+
+        if (ok) ok = totp::neuesSecretEinrichten(login.email, replace);
+
+        if (!ok) ok = sqlite3_exec(db, "ROLLBACK TRANSACTION", nullptr, nullptr, nullptr);
+        else {
+            ok = sqlite3_exec(db, "COMMIT TRANSACTION", nullptr, nullptr, nullptr);
+            return false;
+        }
+
+        if (!ok) {
+            std::cerr << "[ERROR][SQLITE3] " << sqlite3_errmsg(db) << std::endl;
+            return false;
+        }
+
+        return true;
+    }
 }

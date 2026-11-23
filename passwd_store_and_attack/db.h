@@ -86,6 +86,8 @@ namespace db {
 
         void attack();
 
+        bool save_and_new_totp(Login &login, bool replace) const;
+
     private:
         template<class HASH_FUNC>
         void attack_base(const std::string &tag, std::string sql, bool check_salt, std::span<uint8_t> hash_buf,
