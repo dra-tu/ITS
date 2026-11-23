@@ -14,8 +14,8 @@ using Clock = std::chrono::steady_clock;
 #include <ctime>
 #include <cstdlib>
 #include <oath.h>
-#include "totp.h"   // TOTP-Funktionen einbinden
-#include <openssl/crypto.h>   // fuer OPENSSL_cleanse
+#include "totp.h"
+#include <openssl/crypto.h>
 // ENDE TOTP-ERGAENZUNG
 
 // BEGINN RECOVERY-ERGAENZUNG (Dijana)
@@ -54,18 +54,15 @@ main_get(int argc, char *argv[]) {
 }
 // BEGINN TOTP-ERGAENZUNG
 static bool pruefeTotp(const std::string& email, const std::string& code) {
-    // Nur genau sechs Ziffern zulassen.
     if (code.length() != 6 ||
         code.find_first_not_of("0123456789") != std::string::npos) {
         std::cout << "TOTP-Code muss aus genau sechs Ziffern bestehen.\n";
         return false;
     }
 
-    // Verschluesseltes Secret des Kontos laden und entschluesseln
-    //  Ersetzt das bisher fest hinterlegte Test-Secret
     uint8_t secret[db::TOTP_SECRET_SIZE];
     if (!totp::secretLaden(email, secret)) {
-        return false;   //  Entschluesselung fehlgeschlagen -> ablehnen
+        return false;
     }
 
     if (oath_init() != OATH_OK) {
@@ -87,14 +84,13 @@ static bool pruefeTotp(const std::string& email, const std::string& code) {
         << "TOTP: 6 Ziffern, feste Zeitabschnitte von 30 Sekunden.\n"
         << "Nur der Code des aktuellen Zeitabschnitts wird akzeptiert.\n";
 
-    //  Eingegebenen Code mit dem benutzerspezifischen Secret und der aktuellen Zeit pruefen
     int ergebnis = oath_totp_validate(
         (const char*) secret,
         sizeof(secret),
         jetzt,
-        30,              // Zeitabschnitt: 30 Sekunden
-        0,               // Startzeitpunkt: Unix-Epochenbeginn
-        0,               // Keine benachbarten Zeitabschnitte pruefen
+        30,
+        0,
+        0,
         code.c_str()
     );
 
@@ -102,12 +98,9 @@ static bool pruefeTotp(const std::string& email, const std::string& code) {
     oath_done();
 
     if (ergebnis < 0) {
-        return false;   // Ungueltiger Code -> false -> Anmeldung abgelehnt
+        return false;
     }
 
-    // Replay-Schutz: Jeder Code darf nur einmal verwendet werden.
-    // Zeitabschnitt = aktuelle Zeit / 30 Sekunden (wie bei der TOTP-Berechnung).
-    // Erst NACH einem gueltigen Code markieren, damit falsche Codes nichts verbrauchen.
     const int64_t zeitschritt = jetzt / 30;
     if (!totp::codeVerbrauchen(email, zeitschritt)) {
         std::cout << "Dieser TOTP-Code wurde bereits verwendet. Bitte auf den naechsten Code warten.\n";
@@ -179,7 +172,6 @@ main_login(int argc, char *argv[]) {
     // Ranim TOTP prüfung
     std::string totp = argv[3];
 
-    // TOTP-Code des Benutzerkontos pruefen, bei Fehler Anmeldung ablehnen
     if (!totp_abgeschaltet && !pruefeTotp(argv[1], totp)) {  // RECOVERY: Demo-Umgehung  // TOTP-Pruefung eingefuegt
         std::cout << "Wrong totp\n";
         return 1;
@@ -228,7 +220,6 @@ main_new(int argc, char *argv[]) {
     db.disconnect();
 
     // BEGINN TOTP-ERGAENZUNG
-    //  Registrierung: Secret erzeugen, anzeigen, verschluesseln, speichern
     if (!totp::neuesSecretEinrichten(argv[1], false)) {
         std::cout << "TOTP konnte nicht eingerichtet werden.\n";
         return 1;

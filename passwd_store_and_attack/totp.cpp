@@ -16,12 +16,8 @@
 
 namespace totp {
 
-    const constexpr size_t KEY_SIZE = 32; // AES-256 -> 32 Byte Master-Key
+    const constexpr size_t KEY_SIZE = 32;
 
-    // ---------- Schluesselverwaltung ----------
-    // ---------- Master-Key: eigene Datei im Home-Ordner, nicht im Projekt ----------
-
-    // Separate Datei ausserhalb des Projektordners (im Home-Ordner)
     static std::string keyPfad() {
         const char *home = std::getenv("HOME");
         if (home == nullptr) home = ".";
@@ -31,8 +27,6 @@ namespace totp {
     static bool masterKeyLaden(uint8_t key[KEY_SIZE]) {
         std::string pfad = keyPfad();
 
-        // Bei spaeteren Programmstarts denselben Master-Key laden
-        // Fall 1: Datei gibt es schon -> denselben Key laden
         FILE *datei = std::fopen(pfad.c_str(), "rb");
         if (datei != nullptr) {
             size_t gelesen = std::fread(key, 1, KEY_SIZE, datei);
@@ -45,12 +39,8 @@ namespace totp {
             return true;
         }
 
-        // Master-Key einmalig zufaellig erzeugen
-        // Fall 2: erster Start -> neuen zufaelligen Key erzeugen
         if (RAND_bytes(key, KEY_SIZE) != 1) return false;
 
-        // Durch Dateizugriffsrechte geschuetzt speichern
-        // 0600 = nur der eigene Benutzer darf die Datei lesen und schreiben
         int fd = open(pfad.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
         if (fd < 0) {
             std::cout << "Master-Key-Datei konnte nicht angelegt werden: " << pfad << "\n";
@@ -65,12 +55,8 @@ namespace totp {
         return true;
     }
 
-    // ---------- AES-256-GCM ----------
-
-    // Secret mit dem Master-Key verschluesseln (AES-256-GCM)
     static bool verschluesseln(const uint8_t key[KEY_SIZE],
                                const uint8_t secret[db::TOTP_SECRET_SIZE], db::Login &login) {
-        // Fuer jede Verschluesselung eine neue zufaellige Nonce
         if (RAND_bytes(login.totp_nonce, db::TOTP_NONCE_SIZE) != 1) return false;
 
         EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
@@ -87,8 +73,6 @@ namespace totp {
         return ok;
     }
 
-    // Secret entschluesseln
-    // Liefert false bei fehlgeschlagener Entschluesselung
     static bool entschluesseln(const uint8_t key[KEY_SIZE],
                                db::Login &login, uint8_t secret[db::TOTP_SECRET_SIZE]) {
         EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
@@ -99,33 +83,23 @@ namespace totp {
         if (ok && EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, key, login.totp_nonce) != 1) ok = false;
         if (ok && EVP_DecryptUpdate(ctx, secret, &len, login.totp_secret_enc, db::TOTP_SECRET_SIZE) != 1) ok = false;
         if (ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, db::TOTP_TAG_SIZE, login.totp_tag) != 1) ok = false;
-        // Hier wird der Tag geprueft: passt er nicht, wurde etwas veraendert
         if (ok && EVP_DecryptFinal_ex(ctx, secret + len, &len) != 1) ok = false;
 
         EVP_CIPHER_CTX_free(ctx);
         return ok;
     }
 
-    // ---------- Funktionen fuer Registrierung, Login und Recovery ----------
-
     bool neuesSecretEinrichten(const std::string &email, bool ersetzen) {
         uint8_t key[KEY_SIZE];
         if (!masterKeyLaden(key)) return false;
 
-        // Fuer jedes Benutzerkonto ein eigenes zufaelliges TOTP-Secret erzeugen
-        // 1. Zufaelliges Secret erzeugen
         uint8_t secret[db::TOTP_SECRET_SIZE];
         bool ok = RAND_bytes(secret, db::TOTP_SECRET_SIZE) == 1;
 
-        // Secret mit dem Master-Key verschluesseln
-        // 2. Mit dem Master-Key verschluesseln
         db::Login login{};
         email.copy(login.email, hashing::EMAIL_SIZE - 1);
         if (ok) ok = verschluesseln(key, secret, login);
 
-        // Verschluesseltes Secret, Nonce und Tag beim Benutzerkonto in der Datenbank speichern
-        // Bei ersetzen = true wird das alte Secret ersetzt (Recovery)
-        // 3. Verschluesseltes Secret, Nonce und Tag beim Konto speichern
         if (ok) {
             db::DB datenbank{};
             ok = datenbank.connect();
@@ -135,8 +109,6 @@ namespace totp {
             }
         }
 
-        // Secret als Base32 zur Einrichtung der Authenticator-App anzeigen
-        // 4. Erst nach dem Speichern als Base32 fuer die Authenticator-App anzeigen
         if (ok) {
             char *base32 = nullptr;
             size_t base32_laenge = 0;
@@ -148,7 +120,6 @@ namespace totp {
             }
         }
 
-        // Klartext-Secret und Key aus dem Speicher loeschen
         OPENSSL_cleanse(secret, sizeof(secret));
         OPENSSL_cleanse(key, sizeof(key));
         return ok;
@@ -166,8 +137,6 @@ namespace totp {
         uint8_t key[KEY_SIZE];
         if (!masterKeyLaden(key)) return false;
 
-        // Verschluesseltes Secret des Benutzerkontos aus der Datenbank laden
-        // Verschluesseltes Secret, Nonce und Tag aus der Tabelle login laden
         db::DB datenbank{};
         db::Login login{};
         bool ok = datenbank.connect();
@@ -181,9 +150,6 @@ namespace totp {
             return false;
         }
 
-        // Entschluesseln
-        // Fehlgeschlagene Entschluesselung -> false -> Anmeldung wird abgelehnt
-        // Entschluesseln (schlaegt fehl bei falschem Key oder manipulierten Daten)
         ok = entschluesseln(key, login, secret);
         OPENSSL_cleanse(key, sizeof(key));
         if (!ok) {

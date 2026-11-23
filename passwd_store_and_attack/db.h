@@ -9,10 +9,9 @@ namespace db {
     const constexpr char *DEFAULT_DB_FILE = "login.db";
 
     // BEGINN TOTP-ERGAENZUNG
-    //  Groessen der neuen Datenbankfelder
-    const constexpr size_t TOTP_SECRET_SIZE = 20; // TOTP-Secret: 160 Bit
-    const constexpr size_t TOTP_NONCE_SIZE  = 12; // AES-GCM-Nonce: 12 Byte
-    const constexpr size_t TOTP_TAG_SIZE    = 16; // AES-GCM-Tag: 16 Byte
+    const constexpr size_t TOTP_SECRET_SIZE = 20;
+    const constexpr size_t TOTP_NONCE_SIZE  = 12;
+    const constexpr size_t TOTP_TAG_SIZE    = 16;
     // ENDE TOTP-ERGAENZUNG
 
     class Login {
@@ -23,7 +22,6 @@ namespace db {
         uint8_t sha512_Salt[hashing::SHA512_SIZE];
         uint8_t argon2id[hashing::ARGON2ID_SIZE];
         // BEGINN TOTP-ERGAENZUNG
-        //  Felder totp_secret_enc, totp_nonce und totp_tag beim Benutzerkonto
         uint8_t totp_secret_enc[TOTP_SECRET_SIZE];
         uint8_t totp_nonce[TOTP_NONCE_SIZE];
         uint8_t totp_tag[TOTP_TAG_SIZE];
@@ -59,10 +57,8 @@ namespace db {
         bool save_login(const Login &login) const;
         bool load_login(const std::string_view &user_email, Login &out_login) const;
         // BEGINN TOTP-ERGAENZUNG
-        // Datenbankfunktionen zum Speichern und Laden der TOTP-Felder
         bool save_totp(const Login &login, bool ersetzen) const;
         bool load_totp(const std::string_view &user_email, Login &out_login) const;
-        // Replay-Schutz: Zeitabschnitt eines TOTP-Codes als verbraucht markieren
         bool use_totp_step(const std::string_view &user_email, int64_t step) const;
         // ENDE TOTP-ERGAENZUNG
 
