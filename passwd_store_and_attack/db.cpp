@@ -373,28 +373,19 @@ namespace db {
     }
 
     // BEGINN TOTP-ERGAENZUNG
-    // Felder totp_secret_enc, totp_nonce und totp_tag in der Tabelle login ergaenzen
-    // Fuegt die TOTP-Spalten zur Tabelle login hinzu.
-    // Gibt es eine Spalte schon, meldet SQLite einen Fehler, der hier absichtlich ignoriert wird.
     static void
     totp_spalten_anlegen(sqlite3 *db) {
         sqlite3_exec(db, "ALTER TABLE login ADD COLUMN totp_secret_enc BLOB(20)", nullptr, nullptr, nullptr);
         sqlite3_exec(db, "ALTER TABLE login ADD COLUMN totp_nonce BLOB(12)",      nullptr, nullptr, nullptr);
         sqlite3_exec(db, "ALTER TABLE login ADD COLUMN totp_tag BLOB(16)",        nullptr, nullptr, nullptr);
-        // Replay-Schutz: zuletzt verwendeter Zeitabschnitt (30-Sekunden-Schritt)
         sqlite3_exec(db, "ALTER TABLE login ADD COLUMN totp_last_step INTEGER",   nullptr, nullptr, nullptr);
     }
 
-    //  Datenbankfunktion zum Speichern erweitern
-    //  Verschluesseltes Secret, Nonce und Tag beim Benutzerkonto speichern
-    //  Mit ersetzen = true nutzbar fuer die Recovery
     bool
     DB::save_totp(const Login &login, bool ersetzen) const {
-        // Registrierung: nur speichern, wenn das Konto noch kein Secret hat.
         static std::string_view sql_neu =
             "UPDATE login SET totp_secret_enc = :ENC, totp_nonce = :NONCE, totp_tag = :TAG"
             " WHERE email = :EMAIL AND totp_secret_enc IS NULL";
-        // Recovery: altes Secret durch neues ersetzen.
         static std::string_view sql_ersetzen =
             "UPDATE login SET totp_secret_enc = :ENC, totp_nonce = :NONCE, totp_tag = :TAG"
             " WHERE email = :EMAIL";
@@ -426,14 +417,11 @@ namespace db {
         if (res != SQLITE_DONE) std::cerr << sqlite3_errmsg(db) << "\n";
         sqlite3_finalize(stmt);
 
-        // Erfolgreich nur, wenn genau ein Konto geaendert wurde.
         if (res != SQLITE_DONE) return false;
         if (sqlite3_changes(db) != 1) return false;
         return true;
     }
 
-    //  Datenbankfunktion zum Laden erweitern
-    //  Verschluesseltes Secret des jeweiligen Benutzerkontos aus der Datenbank laden
     bool
     DB::load_totp(const std::string_view &user_email, Login &out_login) const {
         static std::string_view sql_query =
@@ -458,7 +446,6 @@ namespace db {
 
         bool found = false;
         if (sqlite3_step(stmt) == SQLITE_ROW) {
-            // copy_column_value prueft auch die Laenge (leere Spalte -> false)
             found = copy_column_value(stmt, 0, out_login.totp_secret_enc)
                  && copy_column_value(stmt, 1, out_login.totp_nonce)
                  && copy_column_value(stmt, 2, out_login.totp_tag);
@@ -467,9 +454,6 @@ namespace db {
         return found;
     }
 
-    // Replay-Schutz: Speichert den Zeitabschnitt eines gueltigen Codes beim Konto.
-    // Das UPDATE klappt nur, wenn dieser Zeitabschnitt NEUER ist als der zuletzt benutzte.
-    // Wurde der Code schon einmal verwendet, wird keine Zeile geaendert -> false.
     bool
     DB::use_totp_step(const std::string_view &user_email, int64_t step) const {
         static std::string_view sql =
@@ -497,7 +481,7 @@ namespace db {
         sqlite3_finalize(stmt);
 
         if (res != SQLITE_DONE) return false;
-        if (sqlite3_changes(db) != 1) return false;   // Code schon benutzt
+        if (sqlite3_changes(db) != 1) return false;
         return true;
     }
     // ENDE TOTP-ERGAENZUNG
