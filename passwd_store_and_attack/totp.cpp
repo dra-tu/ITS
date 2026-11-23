@@ -108,7 +108,9 @@ namespace totp {
 
     // ---------- Funktionen fuer Registrierung, Login und Recovery ----------
 
-    bool neuesSecretEinrichten(const std::string &email, bool ersetzen) {
+    bool neuesSecretEinrichten(const db::DB *datenbank, const std::string &email, bool ersetzen) {
+        if (!datenbank) return false;
+
         uint8_t key[KEY_SIZE];
         if (!masterKeyLaden(key)) return false;
 
@@ -127,12 +129,7 @@ namespace totp {
         // Bei ersetzen = true wird das alte Secret ersetzt (Recovery)
         // 3. Verschluesseltes Secret, Nonce und Tag beim Konto speichern
         if (ok) {
-            db::DB datenbank{};
-            ok = datenbank.connect();
-            if (ok) {
-                ok = datenbank.save_totp(login, ersetzen);
-                datenbank.disconnect();
-            }
+            ok = datenbank->save_totp(login, ersetzen);
         }
 
         // Secret als Base32 zur Einrichtung der Authenticator-App anzeigen

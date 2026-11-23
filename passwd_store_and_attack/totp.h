@@ -13,7 +13,7 @@ namespace totp {
     // ersetzen = true  -> Recovery (altes Secret wird durch ein neues ersetzt)
     // Registrierung
     // Schnittstelle fuer Recovery (ersetzen = true)
-    bool neuesSecretEinrichten(const std::string &email, bool ersetzen);
+    bool neuesSecretEinrichten(const db::DB *datenbank, const std::string &email, bool ersetzen);
 
     // Laedt das verschluesselte Secret des Kontos und entschluesselt es.
     // false, wenn kein Secret vorhanden ist oder die Entschluesselung fehlschlaegt.
