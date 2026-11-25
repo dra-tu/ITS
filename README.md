@@ -1,4 +1,4 @@
-# Benutzte Libs
+# Benutzte Libs (müssen Installiert sein)
 - [liboath](https://oath-toolkit.codeberg.page/liboath-api/liboath-oath.h.html) -> totp
 - [sqlite](https://sqlite.org/) -> DB speicher
 - [openssl](https://docs.openssl.org/master/) -> hash function && rng && AES-256-GCM 
@@ -27,6 +27,8 @@ cmake ..
 # Running
 
 !! login.db muss in der Working directory sein
+
+login.txt hat die anmeldedaten für die nutzer im Beispiel login.db
 
 ```bash
 ./cli # print help mesage
