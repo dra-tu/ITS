@@ -3,6 +3,41 @@ project(ITS)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_subdirectory(passwd_store_and_attack)
+find_package(OpenSSL REQUIRED Crypto)
+find_package(SQLite3)
 
-add_executable(email_demo email_recovery_demo.cpp)
+add_executable(cli
+        src/main.cpp
+        src/hashing.cpp
+        src/hashing.h
+        src/db.cpp
+        src/db.h
+        src/rainbow.h)
+target_compile_options(cli PRIVATE -Wall -Wextra -Wconversion -Wsign-conversion -pedantic-errors)
+target_compile_definitions(cli PRIVATE OPENSSL_NO_DEPRECATED)
+target_link_libraries(cli PRIVATE OpenSSL::Crypto)
+target_link_libraries(cli PRIVATE SQLite3::SQLite3)
+# BEGINN TOTP-ERGAENZUNG
+find_path(OATH_INCLUDE_DIR
+        NAMES oath.h
+        PATHS /opt/homebrew/include /usr/local/include ../oath-toolkit-2.6.15/
+        PATH_SUFFIXES liboath
+)
+
+find_library(OATH_LIBRARY
+        NAMES oath
+        PATHS /opt/homebrew/lib /usr/local/lib ../oath-toolkit-2.6.15/liboath/.libs
+)
+
+if(NOT OATH_INCLUDE_DIR)
+    message(FATAL_ERROR "Liboath header nicht gefunden")
+endif()
+
+if(NOT OATH_LIBRARY)
+    message(FATAL_ERROR "Liboath lib nicht gefunden")
+endif()
+
+target_include_directories(cli PRIVATE ${OATH_INCLUDE_DIR})
+target_link_libraries(cli PRIVATE ${OATH_LIBRARY})
+target_sources(cli PRIVATE src/totp.cpp src/totp.h)
+# ENDE TOTP-ERGAENZUNG

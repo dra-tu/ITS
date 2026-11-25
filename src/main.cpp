@@ -264,108 +264,11 @@ std::string createToken() {
     return token;
 }
 
-static int
-main_email(int argc, char *argv[]) {
-    (void) argc; (void) argv;
-    const std::string username = "Ranim";
-    const std::string email = "ranim.test@example.com";
-    bool secondFactorEnabled = true;
-
-    RecoveryRequest request;
-
-    std::cout << "=== E-Mail-Kontowiederherstellung: Demo ===\n";
-    std::cout << "Testkonto: " << username << "\n";
-    std::cout << "1) Normaler Login (Status anzeigen)\n";
-    std::cout << "2) Verlust des zweiten Faktors simulieren\n";
-    std::cout << "Auswahl: ";
-
-    std::string choice;
-    std::getline(std::cin, choice);
-
-    if (choice != "2") {
-        std::cout << "Zweiter Faktor ist: "
-                  << (secondFactorEnabled ? "AKTIV" : "INAKTIV")
-                  << "\n";
-        std::cout << "Zum Login werden Passwort und TOTP benoetigt.\n";
-        return 0;
-    }
-
-    std::cout << "\nDer Benutzer meldet den Verlust des zweiten Faktors.\n";
-    std::cout << "Wiederherstellungs-E-Mail: " << email << "\n";
-
-    request.token = createToken();
-    request.createdAt = Clock::now();
-
-    const std::string recoveryLink =
-        "https://example.invalid/recover?token=" + request.token;
-
-    std::cout << "\n[SIMULIERTE E-MAIL]\n";
-    std::cout << "Betreff: Kontowiederherstellung\n";
-    std::cout << "Test-Link (1 Minute gueltig):\n";
-    std::cout << recoveryLink << "\n";
-
-    // Erste Eingabe: Token pruefen
-    std::string submittedToken;
-
-    while (true) {
-        std::cout << "\nToken eingeben: ";
-        std::getline(std::cin, submittedToken);
-
-        if (request.used) {
-            std::cout << "FEHLER: Dieser Link wurde bereits verwendet.\n";
-            continue;
-        }
-
-        if (Clock::now() - request.createdAt >
-            std::chrono::minutes(1)) {
-            std::cout << "FEHLER: Der Wiederherstellungs-Link ist abgelaufen.\n";
-            return 0;
-        }
-
-        if (submittedToken != request.token) {
-            std::cout << "FEHLER: Ungueltiger Wiederherstellungs-Link.\n";
-            continue;
-        }
-
-        // Token wird nach erfolgreicher Pruefung verbraucht.
-        request.used = true;
-        std::cout << "\nE-Mail-Link bestaetigt.\n";
-        break;
-    }
-
-    std::cout << "\n[UNSICHERE DEMO-VARIANTE]\n";
-    std::cout << "Das System setzt die Zwei-Faktor-Anforderung zurueck,\n";
-    std::cout << "obwohl kein TOTP-Code vorgelegt wurde.\n";
-
-    secondFactorEnabled = false;
-
-    std::cout << "Wiederherstellung abgeschlossen. TOTP ist nun: "
-              << (secondFactorEnabled ? "AKTIV" : "INAKTIV") << "\n";
-
-    // Zweite Eingabe: Demonstriert, dass derselbe Token verbraucht ist.
-    std::cout << "\nTest: Verwende denselben Token erneut.\n";
-    std::cout << "Token erneut eingeben: ";
-    std::getline(std::cin, submittedToken);
-
-    if (request.used) {
-        std::cout << "FEHLER: Dieser Link wurde bereits verwendet.\n";
-    }
-
-    std::cout << "\nHinweis: Keine echte E-Mail, keine produktive Anwendung.\n";
-
-    return 0;
-}
-
 // BEGINN RECOVERY-ERGAENZUNG (Dijana)
 // cli recover <user>: erklaert die zwei Schritte der Wiederherstellung
 static int
 main_recover(int argc, char *argv[]) {
-    (void) argv;
-    if (argc != 2) {
-        std::cerr << "[ERROR] args wrong" << std::endl;
-        std::cerr << "EXPECTED: cli recover <email/user>" << std::endl;
-        return 1;
-    }
+    (void) argc; (void) argv;
     std::cout << "Recovery geht in zwei Schritten (wie bei einer echten E-Mail):\n"
               << "  1) cli recover-get <user>\n"
               << "       -> Token wird per (simulierter) E-Mail verschickt, Konto ist gesperrt\n"
@@ -592,9 +495,8 @@ constexpr std::array commands = std::to_array<const cmd>({
     {"login",  "check if user+password is in the DB",  main_login},
     {"get",    "display salt and the hashes of a user",main_get},
     {"attack", "benchmark offline attacks",          main_attack},
-    {"r",     "email",   main_email},
     // BEGINN RECOVERY-ERGAENZUNG (Dijana)
-    {"recover",     "<email/user>  show the recovery steps",                      main_recover},
+    {"recover-help",     "<email/user>  show the recovery steps",                      main_recover},
     {"recover-get", "<user>  start recovery: get token, lock user",               main_recover_get},
     {"recover-set", "<user> <new password> <token>  finish: new password + totp", main_recover_set},
     {"lose-totp",   "<user>  demo: simulate loss of the second factor",           main_lose_totp},
