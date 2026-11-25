@@ -28,6 +28,8 @@ cmake ..
 
 !! login.db muss in der Working directory sein
 
+login.txt hat die anmeldedaten für die nutzer im Beispiel login.db
+
 ```bash
 ./cli # print help mesage
 ```
