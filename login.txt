@@ -1,0 +1,9 @@
+      name      pw                totp secret
+--------------------------------------------------------------------
+login dude      dddd              $(oathtool --totp -b QLTLUWO3KW4JTWSTPU2NAMVNKL7OUCNK)
+login hello     hello             $(oathtool --totp -b GP4W6SQT7SJBOMPSLUQSV5A5L3QHRNWT)
+login Rathalos  Fireball          $(oathtool --totp -b FA3MLQEQF4E57VSLSOCBSDCEIYXF7GTM)
+login Solaire   "Praise the Sun"  $(oathtool --totp -b UTAOIFHUQT6HVSTACHCMLW2AEOJW63QK)
+login dragon2   dragon            $(oathtool --totp -b 4YOOXOHVRXS3AQYNHEJ4ZBZ7R3U2MBP3)
+login dave      zuag@§ui          $(oathtool --totp -b OR3D7SI3YBI24HOKGWNTU6UH6EW776O4)
+login steve     minecraft         $(oathtool --totp -b KGDLKL4CMRZ6QBEILBO6UGRRHFZYF6LM)
