@@ -9,7 +9,7 @@ sqlite3 login.db <path to createTable.sql>
 ```
 
 # Building
-
+gin.db muss in der Working directory s
 Es ist ein CMake project.
 
 build optionen:
@@ -21,5 +21,13 @@ build optionen:
 mkdir build
 cd build
 cmake ..
-<build cmd z.b. make>
+# build cmd z.b. make
+```
+
+# Running
+
+!! login.db muss in der Working directory sein
+
+```bash
+./cli # print help mesage
 ```
